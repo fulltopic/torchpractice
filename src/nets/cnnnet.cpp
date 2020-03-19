@@ -24,8 +24,10 @@ using TensorList = torch::TensorList;
 using string = std::string;
 
 CNNNet::CNNNet() :
-		conv0(torch::nn::Conv2dOptions(1, 128, {5, 3}).padding({2, 1})),
-		batchNorm0(128),
+		conv0(torch::nn::Conv2dOptions(1, 32, {5, 3}).padding({2, 1})),
+		batchNorm0(32),
+		conv1(torch::nn::Conv2dOptions(32, 128, {3, 3}).padding({1, 1})),
+		batchNorm1(128),
 		fc0(torch::nn::Linear(23040, 1024)),
 		fcBatchNorm0(1024),
 		fc1(torch::nn::Linear(1024, 42)),
@@ -33,6 +35,8 @@ CNNNet::CNNNet() :
 {
 	register_module("conv0", conv0);
 	register_module("batchNorm0", batchNorm0);
+	register_module("conv1", conv1);
+	register_module("batchNorm1", batchNorm1);
 	register_module("fc0", fc0);
 	register_module("fcBatchNorm0", fcBatchNorm0);
 	register_module("fc1", fc1);
@@ -75,7 +79,13 @@ torch::Tensor CNNNet::forward(std::vector<torch::Tensor> inputs, const int seqLe
 
 	auto batch0Output = batchNorm0->forward(conv0Output);
 
-	Tensor convOutput = batch0Output;
+	auto conv1Output = conv1->forward(batch0Output);
+	conv1Output = torch::max_pool2d(conv1Output, {1, 2});
+	conv1Output = torch::leaky_relu(conv1Output);
+
+	auto batch1Output = batchNorm1->forward(conv1Output);
+
+	Tensor convOutput = batch1Output;
 //	std::cout << "Con0output " << convOutput.sizes() << std::endl;
 	Tensor fcInput = convOutput.view(
 			{convOutput.size(0), convOutput.size(1) * convOutput.size(2) * convOutput.size(3)});

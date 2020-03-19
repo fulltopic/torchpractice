@@ -110,6 +110,8 @@ public:
 struct CNNNet: torch::nn::Module {
 	torch::nn::Conv2d conv0;
 	torch::nn::BatchNorm batchNorm0;
+	torch::nn::Conv2d conv1;
+	torch::nn::BatchNorm batchNorm1;
 	torch::nn::Linear fc0;
 	torch::nn::BatchNorm fcBatchNorm0;
 	torch::nn::Linear fc1;
