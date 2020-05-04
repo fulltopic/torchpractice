@@ -109,11 +109,15 @@ public:
 
 struct CNNNet: torch::nn::Module {
 	torch::nn::Conv2d conv0;
-	torch::nn::BatchNorm batchNorm0;
+	torch::nn::BatchNorm2d batchNorm0;
 	torch::nn::Conv2d conv1;
-	torch::nn::BatchNorm batchNorm1;
+	torch::nn::BatchNorm2d batchNorm1;
+	torch::nn::Conv2d conv2;
+	torch::nn::BatchNorm2d batchNorm2;
+	torch::nn::Conv2d conv3;
+	torch::nn::BatchNorm2d batchNorm3;
 	torch::nn::Linear fc0;
-	torch::nn::BatchNorm fcBatchNorm0;
+	torch::nn::BatchNorm1d fcBatchNorm0;
 	torch::nn::Linear fc1;
 
 	std::ofstream dataFile;

@@ -8,6 +8,7 @@
 #include "lmdbtools/LmdbReader.h"
 #include "lmdbtools/LmdbDataDefs.h"
 #include "lmdbtools/Lmdb2RowDataDefs.h"
+#include <torch/torch.h>
 
 int main() {
 	const std::string cppCreateDb = "/home/zf/workspaces/res/dbs/lmdbscenetest";

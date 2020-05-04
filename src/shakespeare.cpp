@@ -117,8 +117,8 @@ struct Net: torch::nn::Module {
 //			, int inputLen, int batch
 //			):
 	Net(int hiddenLen, int inputLen):
-		lstm(LSTM(LSTMOptions(inputLen, hiddenLen))),
-		fc(Linear(hiddenLen, inputLen))
+		lstm(LSTMOptions(inputLen, hiddenLen)),
+		fc(hiddenLen, inputLen)
 //		batchSize(batch),
 //		seqLen(seq)
 	{
@@ -129,7 +129,9 @@ struct Net: torch::nn::Module {
 	}
 
 	Tensor forward(Tensor input, const int seqLen, const int batchSize) {
-		Tensor state;
+		Tensor state0 = torch::zeros({1, input.size(0), lstm->options.hidden_size()});
+		Tensor state1 = torch::zeros({1, input.size(0), lstm->options.hidden_size()});
+		std::tuple<Tensor, Tensor> state(state0, state1);
 
 		auto inputs = torch::chunk(input, input.size(0) / (seqLen * batchSize), 0);
 //		auto test = inputs[0].view({seqLen, batchSize, input.size(1)});
@@ -138,8 +140,8 @@ struct Net: torch::nn::Module {
 		vector<Tensor> outputs;
 		for (auto inputTensor: inputs) {
 			auto lstmOutput = lstm->forward(inputTensor.view({seqLen, batchSize, input.size(input.dim() - 1)}), state);
-			state = lstmOutput.state;
-			auto fcOutput = fc->forward(lstmOutput.output);
+			state = std::get<1>(lstmOutput);
+			auto fcOutput = fc->forward(std::get<0>(lstmOutput));
 			auto output = torch::softmax(fcOutput, 2);
 //			auto output = torch::log_softmax(fcOutput, 2);
 //			cout << "output " << output.sizes() << endl;

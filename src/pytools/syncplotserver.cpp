@@ -20,16 +20,23 @@ using std::string;
 using std::cout;
 using std::endl;
 
-SyncPlotServer::SyncPlotServer(const int paramNum, const std::vector<Tensor>& parameters):
+SyncPlotServer::SyncPlotServer(const int paramNum, const std::vector<Tensor>& parameters, const std::string iFigureName):
+		figureName(iFigureName),
 		trainIte(0),
+		trainSeq(0),
+		currTrainLoss(0),
+		currTrainAccu(0),
 		trainLoss(DataCap, 0),
+		trainAveLoss(DataCap, 0),
 		trainAccu(DataCap, 0),
+		trainAveAccu(DataCap, 0),
 		validIte(0),
 		validLoss(DataCap, 0),
 		validAccu(DataCap, 0),
 		updateRatioNum(paramNum),
 		lastParams(vector<Tensor>()),
 		updateRatio(paramNum, vector<float>(DataCap, 0)) {
+//	matplotlibcpp::title(figureName);
 	for (int i = 0; i < paramNum; i ++) {
 		lastParams.push_back(parameters[i].clone());
 	}
@@ -38,7 +45,9 @@ SyncPlotServer::SyncPlotServer(const int paramNum, const std::vector<Tensor>& pa
 void SyncPlotServer::adjustTrainVec() {
 	for (int i = 0; i < DataCap / 2; i ++) {
 		trainLoss[i] = trainLoss[i * 2];
+		trainAveLoss[i] = trainAveLoss[i * 2];
 		trainAccu[i] = trainAccu[i * 2];
+		trainAveAccu[i] = trainAveAccu[i * 2];
 
 		for (int j = 0; j < updateRatioNum; j ++) {
 			updateRatio[j][i] = updateRatio[j][i * 2];
@@ -47,7 +56,9 @@ void SyncPlotServer::adjustTrainVec() {
 
 	for (int i = DataCap / 2; i < DataCap; i ++) {
 		trainLoss[i] = 0;
+		trainAveLoss[i] = 0;
 		trainAccu[i] = 0;
+		trainAveAccu[i] = 0;
 
 		for (int j = 0; j < updateRatioNum; j ++) {
 			updateRatio[j][i] = 0;
@@ -81,6 +92,8 @@ float SyncPlotServer::getAccu(const Tensor outputs, const Tensor labels) {
 }
 
 void SyncPlotServer::trainUpdate(const Tensor outputs, const Tensor labels, const vector<Tensor> parameters) {
+	trainSeq ++;
+
 	if (trainIte >= DataCap) {
 		adjustTrainVec();
 	}
@@ -90,6 +103,11 @@ void SyncPlotServer::trainUpdate(const Tensor outputs, const Tensor labels, cons
 	float accu = getAccu(outputs, labels);
 	trainLoss[trainIte] = loss;
 	trainAccu[trainIte] = accu;
+
+	currTrainLoss = ((double)currTrainLoss * (trainSeq - 1) + loss) / (trainSeq);
+	currTrainAccu = ((double)currTrainAccu * (trainSeq - 1) + accu) / (trainSeq);
+	trainAveLoss[trainIte] = currTrainLoss;
+	trainAveAccu[trainIte] = currTrainAccu;
 
 	for (int i = 0; i < updateRatioNum; i ++) {
 		Tensor updateWs = parameters[i].sub(lastParams[i]);
@@ -124,9 +142,11 @@ void SyncPlotServer::refresh() {
 	matplotlibcpp::subplot(RowNum, ColNum, 1);
 	matplotlibcpp::grid(true);
 	matplotlibcpp::plot(std::vector<float>(&trainLoss[0], &trainLoss[trainIte]));
+	matplotlibcpp::plot(std::vector<float>(&trainAveLoss[0], &trainAveLoss[trainIte]));
 	matplotlibcpp::subplot(RowNum, ColNum, 2);
 	matplotlibcpp::grid(true);
 	matplotlibcpp::plot(std::vector<float>(&trainAccu[0], &trainAccu[trainIte]));
+	matplotlibcpp::plot(std::vector<float>(&trainAveAccu[0], &trainAveAccu[trainIte]));
 
 	matplotlibcpp::subplot(RowNum, ColNum, 3);
 	matplotlibcpp::grid(true);

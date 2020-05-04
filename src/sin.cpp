@@ -17,7 +17,8 @@
 #include <random>
 #include <chrono>
 
-#include "pytools/plotsin.h"
+//#include "pytools/plotsin.h"
+#include <matplotlibcpp.h>
 
 using Tensor = torch::Tensor;
 
@@ -94,9 +95,9 @@ struct Net: torch::nn::Module {
 
 
 	Net(int seqLen, int hiddenSize): lstmHiddenSize(hiddenSize),
-			lstm0(torch::nn::LSTM(torch::nn::LSTMOptions(seqLen, hiddenSize))),
-			lstm1(torch::nn::LSTM(torch::nn::LSTMOptions(hiddenSize, hiddenSize))),
-			fc (torch::nn::Linear(hiddenSize, 1)) {
+			lstm0(torch::nn::LSTMOptions(seqLen, hiddenSize)),
+			lstm1(torch::nn::LSTMOptions(hiddenSize, hiddenSize)),
+			fc (hiddenSize, 1) {
 		register_module("lstm0", lstm0);
 		register_module("lstm1", lstm1);
 		register_module("fc", fc);
@@ -109,21 +110,25 @@ struct Net: torch::nn::Module {
 		std::vector<Tensor> outputs;
 //		Tensor state0 = torch::zeros({2, 1, input.size(0), lstmHiddenSize});
 //		Tensor state1 = torch::zeros({2, 1, input.size(0), lstmHiddenSize});
-		Tensor state0;
-		Tensor state1;
+		Tensor state00 = torch::zeros({1, input.size(0), lstmHiddenSize});
+		Tensor state01 = torch::zeros({1, input.size(0), lstmHiddenSize});
+		Tensor state10 = torch::zeros({1, input.size(0), lstmHiddenSize});
+		Tensor state11 = torch::zeros({1, input.size(0), lstmHiddenSize});
+		std::tuple<Tensor, Tensor> state0(state00, state01);
+		std::tuple<Tensor, Tensor> state1(state10, state11);
 
 		for (auto input: inputs) {
 			input.set_requires_grad(true);
 //			std::cout << "input size " << input.sizes() << std::endl;
 
 			auto rnnOutput0 = lstm0->forward(input.view({1, input.size(0), input.size(1)}), state0);
-			state0 = rnnOutput0.state;
+			state0 = std::get<1>(rnnOutput0);
 //			std::cout << "-----------------------------> End of lstm0 " << std::endl;
 //			auto rnnOutput1 = lstm1->forward(rnnOutput0.output.view({input.size(0), lstmHiddenSize}), state1);
-			auto rnnOutput1 = lstm1->forward(rnnOutput0.output, state1);
-			state1 = rnnOutput1.state;
-
-			auto output = fc->forward(rnnOutput1.output);
+			auto rnnOutput1 = lstm1->forward(std::get<0>(rnnOutput0), state1);
+			state1 = std::get<1>(rnnOutput1);
+//			std::cout << "----------------------------> End of lstm1 " << std::endl;
+			auto output = fc->forward(std::get<0>(rnnOutput1));
 //			std::cout << "Output size: " << output.sizes() << std::endl;
 //			auto output = fc->forward(rnnOutput0.output);
 
@@ -148,10 +153,15 @@ void sinPlot(Tensor output, Tensor target, std::string fileName) {
 
 	int64_t index = e() % output.size(0);
 //	int64_t index = 0;
-	std::cout << "Get index " << index << std::endl;
+//	std::cout << "Get index " << index << std::endl;
 
 	const int64_t dataSize = output.size(1);
-	Tensor x = torch::range(0, dataSize - 1, 1);
+//	std::cout << "plot size: " << dataSize << std::endl;
+	std::vector<int> xData(dataSize, 0);
+	for (int i = 0; i < dataSize; i ++) {
+		xData[i] = i;
+	}
+
 	std::vector<Tensor> y(2);
 	y[0] = outputs[index];
 	y[1] = targets[index];
@@ -161,13 +171,23 @@ void sinPlot(Tensor output, Tensor target, std::string fileName) {
 	colors[0] = "r--";
 	colors[1] = "g";
 
-	plot(y, x, colors, fileName);
+	float *outputDataPtr = y[0].data_ptr<float>();
+	float *targetDataPtr = y[1].data_ptr<float>();
+	std::vector<float> outputData(outputDataPtr, outputDataPtr + dataSize);
+	std::vector<float> targetData(targetDataPtr, targetDataPtr + dataSize);
+
+	matplotlibcpp::clf();
+	matplotlibcpp::plot(outputData);
+	matplotlibcpp::plot(targetData);
+	matplotlibcpp::pause(1);
+//	matplotlibcpp::draw();
+//	plot(y, x, colors, fileName);
 }
 
 void train(const std::string filePath, float split) {
 	const int SeqLen = 1;
 	const int HiddenCell = 51;
-	const int EpochNum = 2;
+	const int EpochNum = 12;
 	const int BatchSize = 64;
 
 	Tensor raw = readData(filePath);
@@ -192,7 +212,7 @@ void train(const std::string filePath, float split) {
 	auto cost = [&]() {
 		optimizer.zero_grad();
 		auto output = net.forward(input);
-//		sinPlot(output, target, fileName + std::to_string(index));
+		sinPlot(output, target, "");
 		auto loss = torch::mse_loss(output, target);
 //		std::cout << "loss " << index << ": " << loss << std::endl;
 		loss.backward();
@@ -225,7 +245,7 @@ void train(const std::string filePath, float split) {
 		auto validOutput = net.forward(validInput);
 		auto validLoss = torch::mse_loss(validOutput, validTarget);
 		std::cout << "valid loss " << validLoss << std::endl;
-//		sinPlot(validOutput, validTarget, fileName + "_valid");
+		sinPlot(validOutput, validTarget, "");
 	}
 }
 
@@ -266,6 +286,8 @@ valid loss 0.00112198
  *
  */
 int main() {
+	matplotlibcpp::figure_size(1000, 1000);
+
 //	testRead();
 //	const std::string filePath = "./data/sin/testminidata.pt";
 	const std::string filePath = "./data/sin/testdata1000.pt";

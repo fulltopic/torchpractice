@@ -7,7 +7,7 @@
 
 void plot(std::vector<torch::Tensor> datas, torch::Tensor xAxis,
 		std::vector<std::string> colors, std::string fileName) {
-	matplotlibcpp::figure_size(1200, 780);
+//	matplotlibcpp::figure_size(1200, 780);
 
 	auto xData = xAxis.flatten().data<float>();
 	std::vector<float> x(xAxis.numel());
@@ -17,17 +17,19 @@ void plot(std::vector<torch::Tensor> datas, torch::Tensor xAxis,
 	for (int i = 0; i < datas.size(); i ++) {
 		auto dataPtr = datas[i].flatten().data<float>();
 		std::vector<float> data(datas[i].numel());
-		std::cout << "The plot data " << std::endl;
-		for (int j = 0; j < data.size(); j ++) {
-			data[j] = dataPtr[j];
-			std::cout << data[j] << ", ";
-		}
-		std::cout << std::endl;
+//		std::cout << "The plot data " << std::endl;
+//		for (int j = 0; j < data.size(); j ++) {
+//			data[j] = dataPtr[j];
+//			std::cout << data[j] << ", ";
+//		}
+//		std::cout << std::endl;
 		matplotlibcpp::plot(x, data, colors[i]);
+		matplotlibcpp::pause(1);
 	}
 
-	matplotlibcpp::legend();
-	matplotlibcpp::save(fileName);
+//	matplotlibcpp::show();
+//	matplotlibcpp::legend();
+//	matplotlibcpp::save(fileName);
 }
 
 void test() {

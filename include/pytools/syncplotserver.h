@@ -26,9 +26,16 @@ public:
 	const static int SubPlotNum = RowNum * ColNum;
 
 private:
+	const std::string figureName;
+
 	int trainIte;
+	uint64_t trainSeq;
+	float currTrainLoss;
+	float currTrainAccu;
 	std::vector<float> trainLoss;
+	std::vector<float> trainAveLoss;
 	std::vector<float> trainAccu;
+	std::vector<float> trainAveAccu;
 
 	int validIte;
 	std::vector<float> validLoss;
@@ -39,7 +46,7 @@ private:
 	std::vector<std::vector<float>> updateRatio;
 
 public:
-	SyncPlotServer(const int paramNum, const std::vector<torch::Tensor>& parameters);
+	SyncPlotServer(const int paramNum, const std::vector<torch::Tensor>& parameters, const std::string iFigureName = "");
 	~SyncPlotServer() = default;
 	SyncPlotServer(const SyncPlotServer& a) = delete;
 	SyncPlotServer& operator=(SyncPlotServer& a) = delete;

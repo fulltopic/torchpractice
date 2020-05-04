@@ -16,3 +16,10 @@
 	[paper](http://www.open-std.org/jtc1/sc22/wg21/docs/papers/2015/n4436.pdf)
 * RAII: Resource Acquisition Is Initialization	
 
+* RNN param initialization
+*torch/csrc/api/src/nn/modules/rnn.cpp*:
+RNNImplBase<Derived>::RNNImplBase -->
+void RNNImplBase<Derived>::reset() -->
+void RNNImplBase<Derived>::reset_parameters()
+
+* Some torch functions defined in nn/init.cpp

@@ -47,6 +47,37 @@ using std::cout;
 
 std::ofstream dataFile("/home/zf/workspaces/workspace_cpp/torchpractice/build/errorstats.txt");
 
+static Tensor getLossWeights() {
+	std::vector<int> classObs{33572, 23254, 16203, 14673, 12465, 13748, 16262, 22762, 33612, 33797, 23184, 16583, 13655, 12137, 13609, 16392, 23132, 33620, 33956, 23593, 16791, 13935, 12447, 13962, 16763, 23257, 33918, 37661, 40072, 40991, 41101, 36822, 37162, 37324,15749, 21448, 515, 168, 0, 11807, 15260, 55656};
+	float totalObs = 0;
+	for (int i = 0; i < classObs.size(); i ++) {
+		totalObs += classObs[i];
+	}
+
+	std::vector<float> weights(classObs.size(), 0);
+	for (int i = 0; i < weights.size(); i ++) {
+		if (classObs[i] > 0) {
+			weights[i] = totalObs / (classObs.size() * classObs[i]);
+		}
+		if (weights[i] > 2) {
+			weights[i] = 0;
+		}
+	}
+
+	Tensor wTensor = torch::zeros(weights.size());
+	for (int i = 0; i < weights.size(); i ++) {
+		wTensor[i] = weights[i];
+	}
+//
+//	for (int i = 0; i < weights.size(); i ++) {
+//		std::cout << weights[i] << ", " << wTensor[i] << std::endl;
+//	}
+
+	return wTensor;
+}
+
+
+
 static float evaluation(Tensor outputs, Tensor labels, bool isTest) {
 	const int batchSize = outputs.size(0);
 	Tensor values;
@@ -60,8 +91,8 @@ static float evaluation(Tensor outputs, Tensor labels, bool isTest) {
 //	std::cout << "Max " << indices.sizes() << std::endl;
 //	std::cout << "Max " << indices[0] << std::endl;
 //	std::cout << outputs[0] << std::endl;
-	const long* labelData = labels.data<long>();
-	const long* indexData = indices.data<long>();
+	const long* labelData = labels.data_ptr<long>();
+	const long* indexData = indices.data_ptr<long>();
 
 //	int matched = 0;
 	if (isTest) {
@@ -95,38 +126,40 @@ static float evaluation(Tensor outputs, Tensor labels, bool isTest) {
 }
 
 
-template<typename DbDefs, typename NetType>
-static std::pair<float, float> validCnnOverfit(LmdbSceneReader<DbDefs>& reader, NetType& net, const int dbStartPos) {
-//	const int dbStartPos = 1000;
-	const int batchSize = 1024;
-	reader.reset();
-	int pos = 0;
-	while (reader.hasNext() && (pos < dbStartPos)) {
-		reader.next();
-		pos ++;
-	}
-
-	std::vector<Tensor> inputs;
-	std::vector<Tensor> labels;
-	std::tie(inputs, labels) = reader.next(batchSize);
-	Tensor labelTensor = torch::cat(labels, 0);
-	Tensor output = net.forward(inputs, 0, false, false);
-
-	auto loss = torch::nll_loss(output, labelTensor).item<float>();
-	auto accu = evaluation(output, labelTensor, false);
-
-	return std::make_pair(loss, accu);
-}
+//template<typename DbDefs, typename NetType>
+//static std::pair<float, float> validCnnOverfit(LmdbSceneReader<DbDefs>& reader, NetType& net, const int dbStartPos) {
+////	const int dbStartPos = 1000;
+//	const int batchSize = 1024;
+//	reader.reset();
+//	net.eval();
+//	int pos = 0;
+//	while (reader.hasNext() && (pos < dbStartPos)) {
+//		reader.next();
+//		pos ++;
+//	}
+//
+//	std::vector<Tensor> inputs;
+//	std::vector<Tensor> labels;
+//	std::tie(inputs, labels) = reader.next(batchSize);
+//	Tensor labelTensor = torch::cat(labels, 0);
+//	Tensor output = net.forward(inputs, 0, false, false);
+//
+//	auto loss = torch::nll_loss(output, labelTensor).item<float>();
+//	auto accu = evaluation(output, labelTensor, false);
+//
+//	return std::make_pair(loss, accu);
+//}
 
 template<typename NetType>
 static std::pair<float, float> validCnnOverfit(std::vector<Tensor>& inputs, std::vector<Tensor>& labels, NetType& net, SyncPlotServer& plotServer)
 {
 	//	const int dbStartPos = 1000;
+	net.eval();
 
 	Tensor labelTensor = torch::cat(labels, 0);
 	Tensor output = net.forward(inputs, 0, false, false);
 
-	auto loss = torch::nll_loss(output, labelTensor).item<float>();
+	auto loss = torch::nll_loss(output, labelTensor, getLossWeights(), at::Reduction::Mean, 41).item<float>();
 	auto accu = evaluation(output, labelTensor, true);
 
 	plotServer.validUpdate(output, labelTensor);
@@ -158,6 +191,7 @@ static void trainCnnDbOverfit(LmdbSceneReader<DbDefs>& reader, NetType& net, tor
 //	const int sampleNum = 8192;
 	const int validStep = 128;
 	const int earlyStop = 32;
+	const float validRatio = 0.001;
 	int stopStep = 0;
 	float lastLoss = FLT_MAX;
 	int count = 0;
@@ -181,13 +215,16 @@ static void trainCnnDbOverfit(LmdbSceneReader<DbDefs>& reader, NetType& net, tor
 //	std::cout << "Start thread " << std::endl;
 
 
+	Tensor lossWTensor = getLossWeights();
+
 	std::vector<Tensor> validInputs;
 	std::vector<Tensor> validLabels;
 	reader.reset();
 	for (int i = 0; i < (sampleNum + 100); i ++) {
 		reader.next();
 	}
-	std::tie(validInputs, validLabels) = reader.next(1024);
+	int validSetSize = std::max(1024, (int)(sampleNum * validRatio));
+	std::tie(validInputs, validLabels) = reader.next(validSetSize);
 	cout << "Get validation dataset: " << validInputs.size() << endl;
 	reader.reset();
 
@@ -198,6 +235,7 @@ static void trainCnnDbOverfit(LmdbSceneReader<DbDefs>& reader, NetType& net, tor
 		totalLoss = 0;
 		bool printed = false;
 		reader.reset();
+		net.train();
 		while (totalNum < sampleNum) {
 			std::vector<Tensor> inputs;
 			std::vector<Tensor> labels;
@@ -225,7 +263,8 @@ static void trainCnnDbOverfit(LmdbSceneReader<DbDefs>& reader, NetType& net, tor
 //			std::cout << "Labels " << labels.size() << std::endl;
 			Tensor labelTensor = at::cat(labels, 0);
 //			std::cout << "Label tensor: " << labelTensor.sizes() << std::endl;
-			auto loss = torch::nll_loss(output, labelTensor);
+			//TODO: weighted loss
+			auto loss = torch::nll_loss(output, labelTensor, lossWTensor, at::Reduction::Mean, 41);
 			totalLoss += (loss.item<float>() * inputs.size());
 //			std::cout << "End of loss " << std::endl;
 			auto accu = evaluation(output, labelTensor, false);
@@ -355,4 +394,5 @@ int main(int argc, char** argv) {
 	test5Rows(lr, sampleNum);
 //	testShuffle();
 //	test5RowThread(lr);
+//	getLossWeights();
 }

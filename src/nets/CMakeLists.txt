@@ -6,4 +6,9 @@ add_library(nets OBJECT
 							FixedFcNet.cpp
 							purefcnet.cpp
 							cnnnet.cpp
+							grunet.cpp
+							fcgrunet.cpp
+							cnngrunet.cpp
+							lstm2net.cpp
+							cnngrutransfer.cpp
 							)
