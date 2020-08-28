@@ -34,7 +34,7 @@ bool lstmCompare(const Tensor& t0, const Tensor& t1) {
 };
 
 GRUNet::GRUNet(int inSeqLen):
-		gru0(torch::nn::GRUOptions(360, 1024).batch_first(true)),
+		gru0(torch::nn::GRUOptions(360, 1024).num_layers(2).batch_first(true)),
 		batchNorm0(inSeqLen),
 		fc(1024, FcOutput),
 		dataFile("./lstmdatafile.txt"),
@@ -137,6 +137,10 @@ Tensor GRUNet::forward(std::vector<Tensor> inputs, const int seqLen, bool isTrai
 
 	for (int i = 0; i < inputs.size(); i ++) {
 		Tensor input = inputs[i];
+//		std::cout << "Input " << input.sizes() << std::endl;
+//		for (int j = 0; j < inputs[i].size(0); j ++) {
+//			std::cout << inputs[i][j] << std::endl;
+//		}
 //			std::cout << "Input " << input.sizes() << std::endl;
 //		inputView.push_back(input.view({input.size(0), InputC, input.size(1), input.size(2)}));
 		inputView.push_back(input);
@@ -170,7 +174,12 @@ Tensor GRUNet::forward(std::vector<Tensor> inputs, const int seqLen, bool isTrai
 	Tensor fcOutput = fc->forward(lstmOutput);
 //	std::cout << "fcOutput " << fcOutput.sizes() << std::endl;
 
-	Tensor output = torch::log_softmax(fcOutput, OutputMax);
+	Tensor output = torch::log_softmax(fcOutput, 2);
+//	std::cout << "output " << output.sizes() << std::endl;
+//	std::cout << "" << output[0][0] << std::endl;
+//	Tensor smOutput = torch::softmax(fcOutput, 2);
+//	std::cout << "smOutput " << smOutput.sizes() << std::endl;
+//	std::cout << "" << smOutput << std::endl;
 
 	return output.view({output.size(0) * output.size(1), output.size(2)});
 

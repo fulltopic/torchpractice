@@ -15,5 +15,9 @@ using namespace torch;
 using namespace std;
 
 Tensor RandomNet::forward(vector<Tensor> inputs) {
-	return torch::rand({42});
+	return torch::rand({1, 42});
+}
+
+void RandomNet::reset() {
+	//nothing
 }

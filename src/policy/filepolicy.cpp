@@ -6,6 +6,8 @@
  */
 
 
+#include "policy/filepolicy.h"
+
 #include <vector>
 #include <string>
 #include <fstream>
@@ -17,8 +19,6 @@
 #include <torch/torch.h>
 
 #include "tenhouclient/tenhoumsgparser.h"
-#include "tenhouclient/filepolicy.h"
-
 #include "tenhouclient/logger.h"
 #include "tenhouclient/tenhoustate.h"
 
@@ -122,6 +122,8 @@ void FilePolicy::reset() {
 int FilePolicy::getAction(Tensor values, vector<int> candidates ) {
 	static auto logger = Logger::GetLogger();
 
+	std::cout << "Get output sizes: " << values.sizes() << std::endl;
+
 	for (; index < msgs.size(); index ++) {
 		if (msgs[index].type == 0) {
 			break;
@@ -195,22 +197,9 @@ int FilePolicy::getAction(Tensor values, vector<int> candidates ) {
 		logger->error("Unexpected message: {}", msg);
 		return LstmStateAction::NOOPAction;
 	}
-//	case ReachMsg:
-//		return LstmStateAction::NOOPAction;
-//	case GameEndMsg:
-//		//TODO: return whwat?
-//		return LstmStateAction::NOOPAction;
-//	case SilentMsg:
-//		cout << "Pass message " << msg << endl;
-//		return LstmStateAction::NOOPAction;
-//	case InvalidMsg:
-//	default:
-//		cout << "Unexpected message " << msg << "\n";
-//		return LstmStateAction::NOOPAction;
-//	}
 }
 
-vector<int> FilePolicy::getTiles4Action(Tensor values, int actionType, vector<int> candidates) {
+vector<int> FilePolicy::getTiles4Action(Tensor values, int actionType, vector<int> candidates, const int raw) {
 	if (candidates.size() <= 2) {
 		return candidates;
 	}

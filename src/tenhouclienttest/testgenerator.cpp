@@ -16,6 +16,7 @@
 #include <string>
 #include <iostream>
 #include <sstream>
+#include <algorithm>
 
 using namespace std;
 
@@ -68,6 +69,23 @@ void testJoinMsg() {
 	Match
 }
 
+void testRejoinMsg() {
+	string msg = TenhouMsgGenerator::GenRejoinMsg("<REJOIN t=\"0,1,r\"/>");
+	cout << "Get rejoin msg " << msg << endl;
+
+	string eMsg = "<JOIN t=\"0,1,r\" />";
+
+	cout << msg.length() << " : " << eMsg.length() << endl;
+	for (int i = 0; i < min(msg.length(), eMsg.length()); i ++) {
+		cout << msg.c_str()[i] << " : " << eMsg.c_str()[i] << endl;
+	}
+
+	if (msg.length() > eMsg.length()) {
+		cout << msg.at(msg.length() - 1) << endl;
+	} else {
+		cout << eMsg.at(eMsg.length() - 1) << endl;
+	}
+}
 void testGoMsg() {
 	auto msg = G::GenGoMsg();
 	auto eMsg = "<GOK />";
@@ -152,5 +170,6 @@ int main() {
 //	testPongMsg();
 //	testChowMsg();
 //	testReachMsg();
-	testRonMsg();
+//	testRonMsg();
+	testRejoinMsg();
 }

@@ -59,7 +59,10 @@ DestructState(ErrorState);
 StateReturnType StartState::rcv(string msg) {
 	if (msg.find(TenhouFsm::StartFsm) != string::npos) {
 		return {G::GenHeloMsg("NoName"), StateType::HeloStateType};
-	} else {
+	} if (msg.find("TIMEOUT") != string::npos) {
+		return {G::GenHeloMsg("NoName"), StateType::HeloStateType};
+	}
+	else {
 		return {msg, StateType::ErrorStateType};
 	}
 }
@@ -155,8 +158,10 @@ StateReturnType GameEndState::rcv(string msg) {
 	}
 }
 
+//TODO: send BYE in timeout case
 StateReturnType ErrorState::rcv(string msg) {
 	cout << "Received unexpected msg: " << msg << endl;
+	exit(-1);
 	return { StateReturnType::Nothing, StateType::ErrorStateType};
 }
 
@@ -185,7 +190,7 @@ StateReturnType GamingState::rcv(string msg) {
 
 StateReturnType SceneEndState::rcv(string msg) {
 	if (msg.find("TIMEOUT") != string::npos) {
-		return { G::GenByeMsg(), StateType::HeloStateType };
+		return { G::GenByeMsg(), StateType::StartStateType };
 	} else {
 		if (U::IsTerminalMsg(msg)) {
 			//TODO: To process message for net. Done

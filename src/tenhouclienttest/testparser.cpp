@@ -34,7 +34,7 @@ void testDrop() {
 }
 
 void testAccept() {
-	string msg = "<T40/>";
+	string msg = "<T117/>";
 	AcceptResult rc = TenhouMsgParser::ParseAccept(msg);
 
 	cout << "Accept " << rc << endl;
@@ -45,7 +45,8 @@ void testSteal() {
 //	string msg = "<N who=\"1\" m=\"62551\"/>"; //Chow
 //	string msg = "<N who=\"1\" m=\"42546\"/>"; //kakan
 //	string msg = "<N who=\"2\" m=\"12298\"/>"; //pong, OK
-	string msg = "<N who=\"1\" m=\"63527\"/>"; //Chow
+//	string msg = "<N who=\"1\" m=\"63527\"/>"; //Chow
+	string msg = "<N who=\"3\" m=\"49463\" />";
 	StealResult rc = TenhouMsgParser::ParseSteal(msg);
 	string stealType = "Invalid";
 	switch(rc.flag) {
@@ -137,11 +138,11 @@ int main() {
 //	testInit();
 //	testDrop();
 //	testAccept();
-//	testSteal();
+	testSteal();
 //	testReach();
 //	testAgari();
 //	testRyu();
-	testReg();
+//	testReg();
 }
 
 

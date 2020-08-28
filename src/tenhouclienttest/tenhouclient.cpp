@@ -6,17 +6,19 @@
  */
 
 
-#include "tenhouclient/filepolicy.h"
-#include "tenhouclient/netproxy.h"
 #include "tenhouclient/randomnet.h"
 #include "tenhouclient/tenhouconsts.h"
 #include "tenhouclient/tenhoufsm.h"
 #include "tenhouclient/tenhoufsmstate.h"
-#include "tenhouclient/tenhoupolicy.h"
 #include "tenhouclient/tenhoustate.h"
 #include "tenhouclient/logger.h"
 
 #include <thread>
+
+#include "policy/filepolicy.h"
+#include "policy/tenhoupolicy.h"
+#include "tenhouclient/netproxy.hpp"
+#include "nets/grustep.h"
 using namespace std;
 
 //void launchFsm(TenhouFsm& fsm) {
@@ -27,16 +29,16 @@ using namespace std;
 //	int a = t + 1;
 //}
 
-void test(string path) {
+static void test(string path) {
 	auto logger = Logger::GetLogger();
 //	string path = "/home/zf/workspaces/workspace_cpp/torchpractice/src/tenhouclienttest/reachtestlog.txt";
 //	string path = "/home/zf/workspaces/workspace_cpp/torchpractice/build/tenhoulogs/tenhoulog38.txt";
-	LstmState innState(10, 72, 5);
+	LstmState innState(72, 5);
 	FilePolicy policy(path);
 	policy.init();
 	logger->info("Policy initiated ");
 
-	NetProxy netProxy(innState, policy);
+	NetProxy<GRUStepNet> netProxy(std::shared_ptr<GRUStepNet>(new GRUStepNet()), innState, policy);
 	TenhouFsm fsm(netProxy);
 	logger->info("Fsm created ");
 

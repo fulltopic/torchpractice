@@ -14,7 +14,7 @@
 				</extensions>
 			</storageModule>
 			<storageModule moduleId="cdtBuildSystem" version="4.0.0">
-				<configuration artifactName="${ProjName}" buildProperties="" description="" id="cdt.managedbuild.toolchain.gnu.base.885180778" name="Default" optionalBuildProperties="org.eclipse.cdt.docker.launcher.containerbuild.property.volumes=,org.eclipse.cdt.docker.launcher.containerbuild.property.selectedvolumes=" parent="org.eclipse.cdt.build.core.emptycfg">
+				<configuration artifactName="${ProjName}" buildProperties="" description="" id="cdt.managedbuild.toolchain.gnu.base.885180778" name="Default" optionalBuildProperties="org.eclipse.cdt.docker.launcher.containerbuild.property.selectedvolumes=,org.eclipse.cdt.docker.launcher.containerbuild.property.volumes=" parent="org.eclipse.cdt.build.core.emptycfg">
 					<folderInfo id="cdt.managedbuild.toolchain.gnu.base.885180778.1101162516" name="/" resourcePath="">
 						<toolChain id="cdt.managedbuild.toolchain.gnu.base.1271532684" name="Linux GCC" superClass="cdt.managedbuild.toolchain.gnu.base">
 							<targetPlatform archList="all" binaryParser="org.eclipse.cdt.core.GNU_ELF" id="cdt.managedbuild.target.gnu.platform.base.1625952037" name="Debug Platform" osList="linux,hpux,aix,qnx" superClass="cdt.managedbuild.target.gnu.platform.base"/>
@@ -26,6 +26,10 @@
 									<listOptionValue builtIn="false" value="/home/zf/workspaces/workspace_cpp/pytorch_1_3/pytorch/torch/include"/>
 									<listOptionValue builtIn="false" value="/home/zf/workspaces/workspace_cpp/pytorch_1_3/pytorch/torch/csrc/api/include"/>
 									<listOptionValue builtIn="false" value="/home/zf/workspaces/workspace_cpp/pytorch_1_3/pytorch/build/include"/>
+									<listOptionValue builtIn="false" value="/usr/include/boost"/>
+									<listOptionValue builtIn="false" value="/home/zf/workspaces/workspace_cpp/pytorch-cpp-rl/include"/>
+									<listOptionValue builtIn="false" value="/home/zf/workspaces/workspace_cpp/pytorch-cpp-rl/example/lib/msgpack-c/include"/>
+									<listOptionValue builtIn="false" value="/home/zf/workspaces/workspace_cpp/pytorch-cpp-rl/example/"/>
 								</option>
 								<inputType id="cdt.managedbuild.tool.gnu.cpp.compiler.input.722958789" superClass="cdt.managedbuild.tool.gnu.cpp.compiler.input"/>
 							</tool>
@@ -45,8 +49,9 @@
 						</toolChain>
 					</folderInfo>
 					<sourceEntries>
-						<entry excluding="FixedKernelNetDef.cpp" flags="VALUE_WORKSPACE_PATH|RESOLVED" kind="sourcePath" name=""/>
+						<entry excluding="src/nettest|nettest|FixedKernelNetDef.cpp" flags="VALUE_WORKSPACE_PATH|RESOLVED" kind="sourcePath" name=""/>
 						<entry flags="VALUE_WORKSPACE_PATH|RESOLVED" kind="sourcePath" name="FixedKernelNetDef.cpp"/>
+						<entry flags="VALUE_WORKSPACE_PATH|RESOLVED" kind="sourcePath" name="src/nettest"/>
 					</sourceEntries>
 				</configuration>
 			</storageModule>

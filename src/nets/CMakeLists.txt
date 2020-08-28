@@ -7,8 +7,10 @@ add_library(nets OBJECT
 							purefcnet.cpp
 							cnnnet.cpp
 							grunet.cpp
+							grustep.cpp
 							fcgrunet.cpp
 							cnngrunet.cpp
 							lstm2net.cpp
 							cnngrutransfer.cpp
+							rnnmasknet.cpp
 							)

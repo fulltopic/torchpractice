@@ -16,6 +16,7 @@ class RandomNet {
 public:
 //	~A3CNet() = 0;
 	torch::Tensor forward(std::vector<torch::Tensor> inputs);
+	void reset();
 };
 
 

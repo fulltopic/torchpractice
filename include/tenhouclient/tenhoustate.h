@@ -48,14 +48,14 @@ public:
 };
 
 enum LstmStateAction {
-	ChowAction = TenhouConsts::TileNum + 1,
-	PongAction = ChowAction + 1,
-	KaKanAction = PongAction + 1,
-	AnKanAction = KaKanAction + 1,
-	MinKanAction = AnKanAction + 1,
-	ReachAction = MinKanAction + 1,
-	RonAction = ReachAction + 1,
-	NOOPAction = RonAction + 1,
+	ChowAction = TenhouConsts::TileNum, //34
+	PongAction = ChowAction + 1, //35
+	KaKanAction = PongAction + 1, //36
+	MinKanAction = KaKanAction + 1, //37
+	AnKanAction = MinKanAction + 1, //38
+	ReachAction = AnKanAction + 1, //39
+	RonAction = ReachAction + 1, //40
+	NOOPAction = RonAction + 1, //41
 };
 
 enum LstmStatePos {
@@ -86,7 +86,7 @@ private:
 //	torch::Tensor lstmH;
 //	torch::Tensor lstmS;
 
-	const int seqLen;
+//	const int seqLen;
 	const int w;
 	const int h;
 
@@ -113,7 +113,7 @@ private:
 	void get4GroupTiles(std::vector<int>& nums, std::set<int>& tiles, bool hasPair);
 
 public:
-	LstmState(int seq, int ww, int hh);
+	LstmState(int ww, int hh);
 	virtual ~LstmState();
 
 	void setReach(int playerIndex);

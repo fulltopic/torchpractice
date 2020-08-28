@@ -5,19 +5,24 @@ set(CAFFE2_SRC_PATH /home/zf/workspaces/workspace_cpp/pytorch_1_3/pytorch)
 set(CAFFE2_SRC_INC_PATH ${CAFFE2_SRC_PATH}/torch/include/)
 
 set(CAFFE2_BLD_PATH ${CAFFE2_SRC_PATH}/build/)
-set(CAFFE2_GEN_INC_PATH ${CAFFE2_BLD_PATH}/lib.linux-x86_64-2.7/torch/include/)
+set(CAFFE2_GEN_INC_PATH ${CAFFE2_BLD_PATH}/lib.linux-x86_64-3.7/torch/include/)
 set(CAFFE2_GEN_LIB_PATH ${CAFFE2_BLD_PATH}/lib/)
-set(CAFFE2_LIB_PATH ${CAFFE2_BLD_PATH}/lib.linux-x86_64-2.7/torch/lib/)
+set(CAFFE2_LIB_PATH ${CAFFE2_BLD_PATH}/lib.linux-x86_64-3.7/torch/lib/)
 set(STATIC_LIB_PATH ${CAFFE2_GEN_LIB_PATH})
 
 set(static_libs ${STATIC_LIB_PATH}/libprotoc.a 
 	${STATIC_LIB_PATH}/libprotobuf.a 
 	${STATIC_LIB_PATH}/libpthreadpool.a
 	${STATIC_LIB_PATH}/libc10d.a)
-set(shared_libs opencv_core opencv_highgui opencv_imgcodecs opencv_imgproc torch torch_cpu glog gflags boost_system c10 rt pthread leveldb lmdb python2.7)
+set(shared_libs opencv_core opencv_highgui opencv_imgcodecs opencv_imgproc torch torch_cpu glog gflags boost_system  boost_filesystem boost_thread c10 rt pthread leveldb lmdb python2.7)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_FLAGS "-g -std=c++17")
 set(CMAKE_BUILD_TYPE Debug)
+
+set(PYTORCH_CPP_RL_PATH /home/zf/workspaces/workspace_cpp/pytorch-cpp-rl)
+set(PYTORCH_CPP_RL_LIB_PATH ${PYTORCH_CPP_RL_PATH}/example/lib)
+set(pytorch_cpp_rl_lib ${PYTORCH_CPP_RL_PATH}/build/libcpprl.a ${PYTORCH_CPP_RL_PATH}/build/example/lib/libzmq/lib/libzmq.a)
+
 
 include_directories(include)
 include_directories(${CAFFE2_SRC_INC_PATH})
@@ -25,11 +30,17 @@ include_directories(${CAFFE2_GEN_INC_PATH})
 include_directories(${CAFFE2_SRC_PATH}/torch/csrc/api/include)
 include_directories(/home/zf/workspaces/workspace_cpp/matplotlib-cpp)
 include_directories(/usr/include/python2.7)
+include_directories(${PYTORCH_CPP_RL_PATH}/include)
+include_directories(${PYTORCH_CPP_RL_PATH}/example)
+include_directories(${PYTORCH_CPP_RL_LIB_PATH}/msgpack-c/include)
 
 add_subdirectory(src/pytools)
 add_subdirectory(src/lmdbtools)
 add_subdirectory(src/nets)
+add_subdirectory(src/nets/supervisednet)
 add_subdirectory(src/tenhouclient)
+add_subdirectory(src/policy)
+add_subdirectory(src/gymtest)
 
 link_directories(${CAFFE2_LIB_PATH})
 
@@ -89,10 +100,6 @@ add_executable(lstmtest src/lstmtest.cpp $<TARGET_OBJECTS:lmdbtools> $<TARGET_OB
 target_compile_features(lstmtest PUBLIC cxx_range_for)
 target_link_libraries(lstmtest ${shared_libs} ${static_libs})
 
-#add_executable(lstmstructure src/lstmtest.cpp $<TARGET_OBJECTS:lmdbtools> $<TARGET_OBJECTS:nets> $<TARGET_OBJECTS:pytools>)
-#target_compile_features(lstmstructure PUBLIC cxx_range_for)
-#target_link_libraries(lstmstructure ${shared_libs} ${static_libs})
-
 add_executable(testbalance src/testbalance.cpp $<TARGET_OBJECTS:lmdbtools> $<TARGET_OBJECTS:nets> $<TARGET_OBJECTS:pytools>)
 target_compile_features(testbalance PUBLIC cxx_range_for)
 target_link_libraries(testbalance ${shared_libs} ${static_libs})
@@ -105,23 +112,112 @@ add_executable(testimplicit src/testimplicit.cpp)
 target_compile_features(testimplicit PUBLIC cxx_range_for)
 target_link_libraries(testimplicit ${shared_libs} )
 
+
+add_executable(grusteptest src/testgrustep.cpp $<TARGET_OBJECTS:lmdbtools> $<TARGET_OBJECTS:nets> $<TARGET_OBJECTS:pytools>)
+target_compile_features(grusteptest PUBLIC cxx_range_for)
+target_link_libraries(grusteptest ${shared_libs} ${static_libs})
+
+add_executable(testgrutransstep src/testgrutransstep.cpp  $<TARGET_OBJECTS:supervisednet> $<TARGET_OBJECTS:lmdbtools> $<TARGET_OBJECTS:pytools>)
+target_compile_features(testgrutransstep PUBLIC cxx_range_for)
+target_link_libraries(testgrutransstep ${shared_libs} ${static_libs})
+
+add_executable(rnnlentest src/testrnnlen.cpp $<TARGET_OBJECTS:lmdbtools> $<TARGET_OBJECTS:nets> $<TARGET_OBJECTS:pytools>)
+target_compile_features(rnnlentest PUBLIC cxx_range_for)
+target_link_libraries(rnnlentest ${shared_libs} ${static_libs})
+
+add_executable(testdebug src/testdebug.cpp)
+target_compile_features(testdebug PUBLIC cxx_range_for)
+target_link_libraries(testdebug ${shared_libs})
+
 ########################################################## TEST ####################################################
-add_executable(parsertest src/tenhouclienttest/testparser.cpp  $<TARGET_OBJECTS:tenhouclient>)
+add_executable(parsertest src/tenhouclienttest/testparser.cpp  $<TARGET_OBJECTS:tenhouclient> $<TARGET_OBJECTS:policy> $<TARGET_OBJECTS:nets>)
 target_compile_features(parsertest PUBLIC cxx_range_for)
 target_link_libraries(parsertest ${shared_libs} ${static_libs})
 
-add_executable(gentest src/tenhouclienttest/testgenerator.cpp  $<TARGET_OBJECTS:tenhouclient>)
+add_executable(testtensor src/tenhouclienttest/testtensor.cpp  $<TARGET_OBJECTS:tenhouclient> $<TARGET_OBJECTS:policy> $<TARGET_OBJECTS:nets>)
+target_compile_features(testtensor PUBLIC cxx_range_for)
+target_link_libraries(testtensor ${shared_libs} ${static_libs})
+
+add_executable(gentest src/tenhouclienttest/testgenerator.cpp  $<TARGET_OBJECTS:tenhouclient> $<TARGET_OBJECTS:policy> $<TARGET_OBJECTS:nets>)
 target_compile_features(gentest PUBLIC cxx_range_for)
 target_link_libraries(gentest ${shared_libs} ${static_libs})
 
-add_executable(fileserver src/tenhouclienttest/testfileserver.cpp  $<TARGET_OBJECTS:tenhouclient>)
+add_executable(fileserver src/tenhouclienttest/testfileserver.cpp  $<TARGET_OBJECTS:tenhouclient> $<TARGET_OBJECTS:policy> $<TARGET_OBJECTS:nets>)
 target_compile_features(fileserver PUBLIC cxx_range_for)
 target_link_libraries(fileserver ${shared_libs} ${static_libs})
 
-add_executable(loggertest src/tenhouclienttest/testlogger.cpp  $<TARGET_OBJECTS:tenhouclient>)
-target_compile_features(loggertest PUBLIC cxx_range_for)
-target_link_libraries(loggertest ${shared_libs} ${static_libs})
+#add_executable(loggertest src/tenhouclienttest/testlogger.cpp  $<TARGET_OBJECTS:tenhouclient> $<TARGET_OBJECTS:policy>)
+#target_compile_features(loggertest PUBLIC cxx_range_for)
+#target_link_libraries(loggertest ${shared_libs} ${static_libs})
 
-add_executable(clienttest src/tenhouclienttest/tenhouclient.cpp  $<TARGET_OBJECTS:tenhouclient>)
+add_executable(clienttest src/tenhouclienttest/tenhouclient.cpp  $<TARGET_OBJECTS:tenhouclient> $<TARGET_OBJECTS:policy> $<TARGET_OBJECTS:nets>)
 target_compile_features(clienttest PUBLIC cxx_range_for)
 target_link_libraries(clienttest ${shared_libs} ${static_libs})
+
+add_executable(dirserver src/tenhouclienttest/testdirserver.cpp  $<TARGET_OBJECTS:tenhouclient> $<TARGET_OBJECTS:policy> $<TARGET_OBJECTS:nets>)
+target_compile_features(dirserver PUBLIC cxx_range_for)
+target_link_libraries(dirserver ${shared_libs} ${static_libs})
+
+add_executable(dirclient src/tenhouclienttest/testdirclient.cpp  $<TARGET_OBJECTS:tenhouclient> $<TARGET_OBJECTS:policy> $<TARGET_OBJECTS:nets>)
+target_compile_features(dirclient PUBLIC cxx_range_for)
+target_link_libraries(dirclient ${shared_libs} ${static_libs})
+
+add_executable(asioclient src/tenhouclienttest/testasioclient.cpp  $<TARGET_OBJECTS:tenhouclient> $<TARGET_OBJECTS:policy> $<TARGET_OBJECTS:nets> $<TARGET_OBJECTS:supervisednet>)
+target_compile_features(asioclient PUBLIC cxx_range_for)
+target_link_libraries(asioclient ${shared_libs} ${static_libs})
+
+add_executable(asiodirclient src/tenhouclienttest/testdirasioclient.cpp  $<TARGET_OBJECTS:tenhouclient> $<TARGET_OBJECTS:policy> $<TARGET_OBJECTS:nets>)
+target_compile_features(asiodirclient PUBLIC cxx_range_for)
+target_link_libraries(asiodirclient ${shared_libs} ${static_libs})
+
+add_executable(testmjclient src/tenhouclienttest/testmjclient.cpp  $<TARGET_OBJECTS:tenhouclient> $<TARGET_OBJECTS:policy> $<TARGET_OBJECTS:nets> $<TARGET_OBJECTS:supervisednet>)
+target_compile_features(testmjclient PUBLIC cxx_range_for)
+target_link_libraries(testmjclient ${shared_libs} ${static_libs})
+
+#add_executable(testgrutransfer src/nettest/gru2523test.cpp  $<TARGET_OBJECTS:tenhouclient> $<TARGET_OBJECTS:policy> $<TARGET_OBJECTS:supervisednet>)
+add_executable(testgrutransfer src/nettest/gru2523test.cpp  $<TARGET_OBJECTS:supervisednet>)
+target_compile_features(testgrutransfer PUBLIC cxx_range_for)
+target_link_libraries(testgrutransfer ${shared_libs} ${static_libs})
+
+################################################ Util test ###############################################
+add_executable(testpad src/testmaskrnn.cpp $<TARGET_OBJECTS:lmdbtools>)
+target_compile_features(testpad PUBLIC cxx_range_for)
+target_link_libraries(testpad ${shared_libs} ${static_libs})
+
+
+############################################### Gym test ##################################################
+add_executable(lunartest src/gymtest/lunartest.cpp  $<TARGET_OBJECTS:gymtest>)
+target_compile_features(lunartest PUBLIC cxx_range_for)
+target_link_libraries(lunartest ${shared_libs} ${static_libs} ${pytorch_cpp_rl_lib})
+
+add_executable(lunartest2 src/gymtest/lunartest2.cpp  $<TARGET_OBJECTS:gymtest>)
+target_compile_features(lunartest2 PUBLIC cxx_range_for)
+target_link_libraries(lunartest2 ${shared_libs} ${static_libs} ${pytorch_cpp_rl_lib})
+
+add_executable(lunalstm src/gymtest/lunarlstm.cpp  $<TARGET_OBJECTS:gymtest>)
+target_compile_features(lunalstm PUBLIC cxx_range_for)
+target_link_libraries(lunalstm ${shared_libs} ${static_libs} ${pytorch_cpp_rl_lib})
+
+
+
+add_executable(lunalstm2 src/gymtest/lunarlstm2.cpp  $<TARGET_OBJECTS:gymtest>)
+target_compile_features(lunalstm2 PUBLIC cxx_range_for)
+target_link_libraries(lunalstm2 ${shared_libs} ${static_libs} ${pytorch_cpp_rl_lib})
+
+
+add_executable(lunalstm3 src/gymtest/lunarlstm3.cpp  $<TARGET_OBJECTS:gymtest>)
+target_compile_features(lunalstm3 PUBLIC cxx_range_for)
+target_link_libraries(lunalstm3 ${shared_libs} ${static_libs} ${pytorch_cpp_rl_lib})
+
+add_executable(lunalstm4 src/gymtest/lunarlstm4.cpp  $<TARGET_OBJECTS:gymtest>)
+target_compile_features(lunalstm4 PUBLIC cxx_range_for)
+target_link_libraries(lunalstm4 ${shared_libs} ${static_libs} ${pytorch_cpp_rl_lib})
+
+add_executable(lunalstm5 src/gymtest/lunarlstm5.cpp  $<TARGET_OBJECTS:gymtest>)
+target_compile_features(lunalstm5 PUBLIC cxx_range_for)
+target_link_libraries(lunalstm5 ${shared_libs} ${static_libs} ${pytorch_cpp_rl_lib})
+
+add_executable(lunalstm6 src/gymtest/lunarlstm6.cpp  $<TARGET_OBJECTS:gymtest>)
+target_compile_features(lunalstm6 PUBLIC cxx_range_for)
+target_link_libraries(lunalstm6 ${shared_libs} ${static_libs} ${pytorch_cpp_rl_lib})
+

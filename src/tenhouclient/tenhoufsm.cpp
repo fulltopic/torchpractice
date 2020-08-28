@@ -13,16 +13,15 @@
 #include "tenhouclient/tenhoumsggenerator.h"
 #include "tenhouclient/tenhoumsgparser.h"
 #include "tenhouclient/tenhoumsgutils.h"
-#include "tenhouclient/netproxy.h"
+#include "tenhouclient/randomnet.h"
 
 #include "tenhouclient/tenhoustate.h"
 
 #include <boost/algorithm/string.hpp>
+#include "tenhouclient/netproxy.hpp"
 
 using namespace std;
 
-const string StateReturnType::SplitToken = "#########";
-const string StateReturnType::Nothing = "";
 
 const string TenhouFsm::StartFsm = "STARTFSM";
 
@@ -35,7 +34,7 @@ TenhouFsm::~TenhouFsm() {
 }
 
 //TODO: Try unique_ptr
-TenhouFsm::TenhouFsm(NetProxy& iNet):
+TenhouFsm::TenhouFsm(NetProxy<GRUStepNet>& iNet):
 		states {
 	{StartStateType, new StartState(*this) },
 	{HeloStateType, new HeloState(*this) },

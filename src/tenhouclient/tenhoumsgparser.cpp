@@ -25,11 +25,16 @@ const std::set<string> TenhouMsgParser::Keys {"TAIKYOKU", " INIT", "T", "D", "U"
 const std::set<string> TenhouMsgParser::SceneKeys {"HELO", "JOIN", "REJOIN", "UN", "LN", "GO", "PROF"};
 
 std::string TenhouMsgParser::RemoveWrapper (std::string msg) {
-	replace_all(msg, "<", " ");
-	replace_all(msg, "/>", " ");
-	trim(msg);
+//	replace_all(msg, "<", " ");
+//	replace_all(msg, "/>", " ");
+//	trim(msg);
+//	return msg;
 
-	return msg;
+	auto bPos = msg.find("<");
+	auto ePos = msg.find("/>");
+	auto cMsg = msg.substr(bPos + 1, (ePos - bPos - 1));
+	trim(cMsg);
+	return cMsg;
 }
 
 string TenhouMsgParser::RemoveHead (const std::string head, std::string msg) {
@@ -181,7 +186,10 @@ DropResult TenhouMsgParser::ParseDrop (std::string msg) {
 
 AcceptResult TenhouMsgParser::ParseAccept (std::string msg) {
 	msg = RemoveWrapper(msg);
-	string rawMsg = msg.substr(1);
+	Logger::GetLogger()->debug("Remove wrapper: {}", msg);
+	auto tIndex = msg.find("T");
+	string rawMsg = msg.substr(tIndex + 1);
+	Logger::GetLogger()->debug("substr: {}", rawMsg);
 	int rawTile = atoi(rawMsg.c_str());
 
 	return rawTile;
@@ -210,9 +218,11 @@ int TenhouMsgParser::ParseM(std::string msg) {
 
 StealResult TenhouMsgParser::ParseSteal(std::string msg) {
 	msg = RemoveWrapper(msg);
+	Logger::GetLogger()->debug("unwrapped msg: {}", msg);
 	vector<string> items;
 	split(items, msg, is_any_of(" "), token_compress_on);
 
+	Logger::GetLogger()->debug("whoMsg, mMsg: {}, {}", items[1], items[2]);
 	int who = ParseWho(items[1]);
 	int m = ParseM(items[2]);
 	Logger::GetLogger()->debug("Pass N msg for {}", m);

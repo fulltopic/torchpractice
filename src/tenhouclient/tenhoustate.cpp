@@ -39,8 +39,8 @@ TenhouState::~TenhouState() {}
 //static const int RonAction = ReachAction + 1;
 //static const int NOOPAction = RonAction + 1;
 
-LstmState::LstmState(int seq, int ww, int hh):
-		seqLen(seq), w(ww), h(hh),
+LstmState::LstmState(int ww, int hh):
+		w(ww), h(hh),
 		isReach(false),
 		isOwner(false),
 		logger(Logger::GetLogger()){
@@ -78,7 +78,7 @@ void LstmState::fixTile(int who, vector<int> raw) {
 			for (int i = 0; i < raw.size(); i ++) {
 				if (myTiles[raw[i]]) {
 					logger->warn("Kan case Removed tile {}", raw[i]);
-					data[0][raw[i]] -= 1;
+					data[0][P::Raw2Tile(raw[i])] -= 1;
 					myTiles[raw[i]] = false;
 				}
 			}
@@ -275,6 +275,10 @@ vector<int> LstmState::getCandidates(int type, int raw) {
 			return vector<int> {raw};
 		}
 		auto tiles = getDropCandidates();
+		if ((raw < 0) || (raw >= TileNum)) {
+			return tiles;
+		}
+
 		if (canKan(P::Raw2Tile(raw), tiles)) {
 			Logger::GetLogger()->warn("Could kan tile {}", raw);
 		}
@@ -627,21 +631,36 @@ int LstmState::getPong() { return PongAction; }
 int LstmState::getReach() { return ReachAction; }
 
 vector<Tensor> LstmState::getState(int indType) {
+//	int tile = P::Raw2Tile(raw);
 	Tensor cpy = innerState.clone();
 
-	switch (indType) {
-	case StealType::ChowType:
-		cpy[1][ChowPos] = 1;
-		break;
-	case StealType::PongType:
-		cpy[1][PongPos] = 1;
-		break;
-	case StealType::ReachType:
-		cpy[1][ReachPos] = 1;
-		break;
+//	switch (indType) {
+//	case StealType::ChowType:
+//		cpy[1][ChowPos] = 1;
+////		if ((tile >= 0) && (tile < TileNum)) {
+////			cpy[0][tile] += 1;
+////		}
+//		break;
+//	case StealType::PongType:
+//		cpy[1][PongPos] = 1;
+////		if ((tile >= 0) && (tile < TileNum)) {
+////			cpy[0][tile] += 1;
+////		}
+//		break;
+//	case StealType::ReachType:
+//		cpy[1][ReachPos] = 1;
+//		break;
+//	}
+
+	if ((indType != StealType::DropType) && (indType != StealType::UnknownType)) {
+		auto dataPtr = cpy.accessor<float, 2>();
+		for (int i = 34; i < 42; i ++) {
+			dataPtr[1][i] = 1;
+		}
 	}
+
 //	return vector<Tensor> ();
-	return {cpy};
+	return {cpy.view({1, 1, w * h}).div(4)};
 }
 
 vector<Tensor> LstmState::endGame() {

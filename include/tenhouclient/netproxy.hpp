@@ -1,45 +1,99 @@
 /*
- * netproxy.cpp
+ * tenhouproxy.h
  *
- *  Created on: Apr 14, 2020
+ *  Created on: Apr 13, 2020
  *      Author: zf
  */
 
-#include "tenhouclient/netproxy.h"
+#ifndef INCLUDE_TENHOUCLIENT_NETPROXY_HPP_
+#define INCLUDE_TENHOUCLIENT_NETPROXY_HPP_
+
+#include "tenhouconsts.h"
+#include "tenhoustate.h"
+#include "logger.h"
+
+#include "randomnet.h"
+
+#include <vector>
+#include <string>
+#include <memory>
+
+#include <torch/torch.h>
+#include "policy/tenhoupolicy.h"
+
 #include "tenhouclient/tenhoumsgparser.h"
 #include "tenhouclient/tenhoumsggenerator.h"
 
 #include "tenhouclient/tenhouconsts.h"
-#include "tenhouclient/tenhoufsm.h"
+//#include "tenhouclient/tenhoufsm.h"
+#include "fsmtypes.h"
 
-#include "nets/a3cnet.h"
 
-#include <vector>
-#include <string>
+template <class NetType>
+class NetProxy {
+private:
+//	torch::Tensor board;
+	TenhouState& innerState;
 
-#include <torch/torch.h>
+//	torch::Tensor rnnHidden;
+//	torch::Tensor rnnState;
 
-using namespace std;
-using namespace torch;
+	//RandomNet net;
+	TenhouPolicy& policy;
+	std::shared_ptr<NetType> net;
+
+	std::shared_ptr<spdlog::logger> logger;
+
+	std::string processInitMsg(std::string msg);
+	std::string processDoraMsg(std::string msg);
+	std::string processDropMsg(std::string msg);
+	std::string processAccept(std::string msg);
+	std::string processNMsg(std::string msg);
+	std::string processReachMsg(std::string msg);
+	std::string processIndicatorMsg(std::string msg);
+	std::string processReachInd(int raw);
+	std::string processChowInd(int fromWho, int raw);
+	std::string processPongInd(int fromWho, int raw);
+	std::string processKanInd(int fromWho, int raw);
+	std::string processPongKanInd(int fromWho, int raw);
+	std::string processPongChowInd(int fromWho, int raw);
+	std::string processPongChowKanInd(int fromWho, int raw);
+	std::string processRonInd(int fromWho, int raw, int type, bool isTsumogiri);
+	std::string processGameEndInd(std::string msg);
+
+public:
+	NetProxy(std::shared_ptr<NetType> net, TenhouState& state, TenhouPolicy& iPolicy);
+	~NetProxy() = default;
+	std::string processMsg(std::string msg);
+	void reset();
+};
+
 
 using P = TenhouMsgParser;
 using G = TenhouMsgGenerator;
-NetProxy::NetProxy(TenhouState& state, TenhouPolicy& iPolicy):
+
+template <class NetType>
+NetProxy<NetType>::NetProxy(std::shared_ptr<NetType> iNet, TenhouState& state, TenhouPolicy& iPolicy):
 	innerState(state),
 	policy(iPolicy),
+	net(iNet),
 	logger(Logger::GetLogger()){
 
 }
 
 //TODO: FSM reset?
-void NetProxy::reset() {
+template <class NetType>
+void NetProxy<NetType>::reset() {
 	innerState.reset();
+	policy.reset();
+	net->reset();
 }
 
 //TODO: Reset
-string NetProxy::processInitMsg(string msg) {
+template <class NetType>
+std::string NetProxy<NetType>::processInitMsg(std::string msg) {
 	reset();
-	policy.reset();
+//	policy.reset();
 
 	auto rc = P::ParseInit(msg);
 	innerState.setOwner(rc.oyaIndex);
@@ -53,21 +107,24 @@ string NetProxy::processInitMsg(string msg) {
 	return StateReturnType::Nothing;
 }
 
-string NetProxy::processDropMsg(string msg) {
+template <class NetType>
+std::string NetProxy<NetType>::processDropMsg(std::string msg) {
 	auto rc = P::ParseDrop(msg);
 	innerState.dropTile(rc.playerIndex, rc.tile);
 
 	return StateReturnType::Nothing;
 }
 
-string NetProxy::processDoraMsg(string msg) {
+template <class NetType>
+std::string NetProxy<NetType>::processDoraMsg(std::string msg) {
 	innerState.setDora(P::ParseDora(msg));
 
 	return StateReturnType::Nothing;
 }
 
-string NetProxy::processAccept(string msg) {
-	logger->debug("processAccept");
+template <class NetType>
+std::string NetProxy<NetType>::processAccept(std::string msg) {
+	logger->debug("processAccept {}", msg);
 	auto rc = P::ParseAccept(msg);
 	logger->debug("Accept rc {}", rc);
 
@@ -84,7 +141,7 @@ string NetProxy::processAccept(string msg) {
 		logger->debug("Get candidate {}", candidates[i]);
 	}
 	//TODO: state take consideration of kan
-	auto output = net.forward(innerState.getState(StealType::DropType));
+	auto output = net->forward(innerState.getState(StealType::DropType));
 	int action = policy.getAction(output, candidates);
 	logger->debug("Extract action from policy {}", action);
 	//kan
@@ -95,11 +152,11 @@ string NetProxy::processAccept(string msg) {
 		if (innerState.isMinKanAction(action)) {
 			replyType = 4;
 		} else if (innerState.isAnKanAction(action)) {
-			replyType = 5;
+			replyType = 4;
 		} else if (innerState.isKaKanAction(action)) {
 			replyType = 5;
 		}
-		string reply = G::AddWrap("N type=\"" + to_string(replyType) + "\" hai=\"" + to_string(rc) + "\" ");
+		std::string reply = G::AddWrap("N type=\"" + std::to_string(replyType) + "\" hai=\"" + std::to_string(rc) + "\" ");
 		logger->debug("Get reply for kan action {}", reply);
 		return reply;
 //		string reply = G::AddWrap(string(""));
@@ -124,7 +181,8 @@ string NetProxy::processAccept(string msg) {
 	}
 }
 
-string NetProxy::processNMsg(string msg) {
+template <class NetType>
+std::string NetProxy<NetType>::processNMsg(std::string msg) {
 	StealResult rc = P::ParseSteal(msg);
 
 	if (rc.flag >= 0) {
@@ -136,8 +194,8 @@ string NetProxy::processNMsg(string msg) {
 			return StateReturnType::Nothing;
 		}
 		auto input = innerState.getState(StealType::DropType);
-		auto output = net.forward(input);
-		auto candidates = innerState.getCandidates(StealType::DropType, 0);
+		auto output = net->forward(input);
+		auto candidates = innerState.getCandidates(StealType::DropType, -1);
 		int action = policy.getAction(output, candidates);
 		auto dropTiles = innerState.getTiles(StealType::DropType, action);
 
@@ -147,7 +205,8 @@ string NetProxy::processNMsg(string msg) {
 	}
 }
 
-string NetProxy::processReachMsg(string msg) {
+template <class NetType>
+std::string NetProxy<NetType>::processReachMsg(std::string msg) {
 	ReachResult rc = P::ParseReach(msg);
 	innerState.setReach(rc.playerIndex);
 
@@ -155,46 +214,52 @@ string NetProxy::processReachMsg(string msg) {
 }
 
 //TODO: Make TenhouState store states for further training
-string NetProxy::processChowInd(int fromWho, int raw) {
+template <class NetType>
+std::string NetProxy<NetType>::processChowInd(int fromWho, int raw) {
 	innerState.dropTile(fromWho, raw);
 
 	auto input = innerState.getState(StealType::ChowType);
-	auto output = net.forward(input);
+	auto output = net->forward(input);
 	auto action = policy.getAction(output, innerState.getCandidates(StealType::ChowType, raw));
 	logger->debug("Get action for chow indicator {}", action);
 
 	if (action == ChowAction) {
-		vector<int> chowCandidates = innerState.getTiles(StealType::ChowType, raw);
-		vector<int> chowTiles = policy.getTiles4Action(output, ChowAction, chowCandidates);
+		std::vector<int> chowCandidates = innerState.getTiles(StealType::ChowType, raw);
+		std::vector<int> chowTiles = policy.getTiles4Action(output, ChowAction, chowCandidates, raw);
 		return G::GenChowMsg(chowTiles);
 	} else {
 		return G::GenNoopMsg();
 	}
 }
 
-string NetProxy::processPongInd(int fromWho, int raw) {
+template <class NetType>
+std::string NetProxy<NetType>::processPongInd(int fromWho, int raw) {
 	logger->debug("Process pong indicator {}, {}", fromWho, raw);
 	//Remove when received N message
 	innerState.dropTile(fromWho, raw);
 
 	auto input = innerState.getState(StealType::PongType);
-	auto output = net.forward(input);
+	auto output = net->forward(input);
 	auto action = policy.getAction(output, innerState.getCandidates(StealType::PongType, raw));
 
 	//TODO: replace == by function of state object
 	if (action == PongAction) {
-		vector<int> pongTiles = innerState.getTiles(StealType::PongType, raw);
+		std::vector<int> pongTiles = innerState.getTiles(StealType::PongType, raw);
 		return G::GenPongMsg(pongTiles);
 	} else {
 		return G::GenNoopMsg();
 	}
 }
 
-string NetProxy::processRonInd(int fromWho, int raw, int type, bool isTsumogiri) {
+template <class NetType>
+std::string NetProxy<NetType>::processRonInd(int fromWho, int raw, int type, bool isTsumogiri) {
 	//Add action executed in gameend msg
-	string reply = G::GenRonMsg(type);
+	std::string reply = G::GenRonMsg(type);
 	logger->debug("processRonInd from {} with type {}", fromWho, type);
 
+	if ((type % 16) == 0) {
+		return reply;
+	}
 ////	if (fromWho == 3)
 //	if (isTsumogiri) { //Don't know rule
 //		reply += StateReturnType::SplitToken + G::GenNoopMsg();
@@ -219,9 +284,10 @@ string NetProxy::processRonInd(int fromWho, int raw, int type, bool isTsumogiri)
 	return reply;
 }
 
-string NetProxy::processGameEndInd(string msg) {
+template <class NetType>
+std::string NetProxy<NetType>::processGameEndInd(std::string msg) {
 	int reward = 0;
-	if (msg.find("AGARI") != string::npos) {
+	if (msg.find("AGARI") != std::string::npos) {
 		logger->debug("Process agari message");
 		auto rc = P::ParseAgari(msg);
 		if (rc.winnerIndex == ME) {
@@ -230,24 +296,25 @@ string NetProxy::processGameEndInd(string msg) {
 			innerState.addTile(rc.machi);
 		}
 		reward = rc.reward;
-	} else if (msg.find("RYU") != string::npos) {
+	} else if (msg.find("RYU") != std::string::npos) {
 		reward = P::ParseRyu(msg);
 	}
 
-	vector<Tensor> inputs = innerState.endGame();
+	std::vector<torch::Tensor> inputs = innerState.endGame();
 	//TODO: To inject inputs into net back storage
 //	policy.reset();
 
 	return StateReturnType::Nothing;
 }
 
-string NetProxy::processReachInd(int raw) {
+template <class NetType>
+std::string NetProxy<NetType>::processReachInd(int raw) {
 	//TODO: The innerState create copy of state with special flag
 	//TODO: without impact on original board state
 	//Net to decide if reach
 	innerState.addTile(raw);
 	auto inputs = innerState.getState(StealType::ReachType);
-	auto output = net.forward(inputs);
+	auto output = net->forward(inputs);
 
 	auto tiles = innerState.getCandidates(StealType::ReachType, raw);
 
@@ -275,23 +342,25 @@ string NetProxy::processReachInd(int raw) {
 	}
 }
 
-string NetProxy::processKanInd(int fromWho, int raw) {
+template <class NetType>
+std::string NetProxy<NetType>::processKanInd(int fromWho, int raw) {
 	innerState.dropTile(fromWho, raw);
 
 	return G::GenNoopMsg();
 }
 
-string NetProxy::processPongKanInd(int fromWho, int raw) {
+template <class NetType>
+std::string NetProxy<NetType>::processPongKanInd(int fromWho, int raw) {
 //	return processPongInd(fromWho, raw);
 	innerState.dropTile(fromWho, raw);
 
 	auto input = innerState.getState(StealType::PonKanType);
-	auto output = net.forward(input);
+	auto output = net->forward(input);
 	auto action = policy.getAction(output, innerState.getCandidates(StealType::PonKanType, raw)); //TODO: What's candidate?
 	logger->debug("Get action for pongkan indicator {}", action);
 
 	if (action == PongAction) {
-		vector<int> pongTiles = innerState.getTiles(StealType::PongType, raw);
+		std::vector<int> pongTiles = innerState.getTiles(StealType::PongType, raw);
 		return G::GenPongMsg(pongTiles);
 	} else if (action == KaKanAction || action == MinKanAction || action == AnKanAction) {
 		//TODO: Distinguish them
@@ -301,30 +370,33 @@ string NetProxy::processPongKanInd(int fromWho, int raw) {
 	}
 }
 
-string NetProxy::processPongChowInd(int fromWho, int raw) {
+template <class NetType>
+std::string NetProxy<NetType>::processPongChowInd(int fromWho, int raw) {
 	innerState.dropTile(fromWho, raw);
 
 	auto input = innerState.getState(StealType::ChowType);
-	auto output = net.forward(input);
+	auto output = net->forward(input);
 	auto action = policy.getAction(output, innerState.getCandidates(StealType::PonChowType, raw));
 	logger->debug("Get action for pongchowkan indicator {}", action);
 
 	if (action == ChowAction) {
-		vector<int> chowTiles = innerState.getTiles(StealType::ChowType, raw);
+		std::vector<int> chowTiles = innerState.getTiles(StealType::ChowType, raw);
 		return G::GenChowMsg(chowTiles);
 	} else if (action == PongAction) {
-		vector<int> pongTiles = innerState.getTiles(StealType::PongType, raw);
+		std::vector<int> pongTiles = innerState.getTiles(StealType::PongType, raw);
 		return G::GenPongMsg(pongTiles);
 	}	else {
 		return G::GenNoopMsg();
 	}
 }
 
-string NetProxy::processPongChowKanInd(int fromWho, int raw) {
+template <class NetType>
+std::string NetProxy<NetType>::processPongChowKanInd(int fromWho, int raw) {
 	return processPongChowInd(fromWho, raw);
 }
 
-string NetProxy::processIndicatorMsg(string msg) {
+template <class NetType>
+std::string NetProxy<NetType>::processIndicatorMsg(std::string msg) {
 	auto rc = P::ParseStealIndicator(msg);
 	auto stealType = P::GetIndType(msg);
 	logger->debug("process indicator msg for {} as {}", rc.type, stealType);
@@ -353,7 +425,8 @@ string NetProxy::processIndicatorMsg(string msg) {
 	}
 }
 
-string NetProxy::processMsg(string msg) {
+template <class NetType>
+std::string NetProxy<NetType>::processMsg(std::string msg) {
 	GameMsgType msgType = P::GetMsgType(msg);
 	logger->debug("Received message type: {}", msgType);
 	//TODO: IndMsg
@@ -376,11 +449,14 @@ string NetProxy::processMsg(string msg) {
 	case GameEndMsg:
 		return processGameEndInd(msg);
 	case SilentMsg:
-		cout << "Pass message " << endl;
+		logger->error("Pass message: {}", msg);
 		return "";
 	case InvalidMsg:
 	default:
-		cout << "Unexpected message " << endl;
+		logger->error("Unexpected message: {}", msg);
 		return "";
 	}
 }
+
+
+#endif /* INCLUDE_TENHOUCLIENT_NETPROXY_HPP_ */

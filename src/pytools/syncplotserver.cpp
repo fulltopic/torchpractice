@@ -20,7 +20,7 @@ using std::string;
 using std::cout;
 using std::endl;
 
-SyncPlotServer::SyncPlotServer(const int paramNum, const std::vector<Tensor>& parameters, const std::string iFigureName):
+SyncPlotServer::SyncPlotServer(const int paramNum, const std::vector<Tensor>& parameters, const std::string iFigureName, const bool toPlotValidTrain):
 		figureName(iFigureName),
 		trainIte(0),
 		trainSeq(0),
@@ -33,9 +33,15 @@ SyncPlotServer::SyncPlotServer(const int paramNum, const std::vector<Tensor>& pa
 		validIte(0),
 		validLoss(DataCap, 0),
 		validAccu(DataCap, 0),
+		validTrainAveLoss(DataCap, 0),
+		validTrainMinLoss(DataCap, 0),
+		validTrainMaxAccu(DataCap, 0),
+		validTrainAveAccu(DataCap, 0),
 		updateRatioNum(paramNum),
 		lastParams(vector<Tensor>()),
-		updateRatio(paramNum, vector<float>(DataCap, 0)) {
+		updateRatio(paramNum, vector<float>(DataCap, 0)),
+		plotValidTrain(toPlotValidTrain)
+{
 //	matplotlibcpp::title(figureName);
 	for (int i = 0; i < paramNum; i ++) {
 		lastParams.push_back(parameters[i].clone());
@@ -72,11 +78,19 @@ void SyncPlotServer::adjustValidVec() {
 	for (int i = 0; i < DataCap / 2; i ++) {
 		validLoss[i] = validLoss[i * 2];
 		validAccu[i] = validAccu[i * 2];
+		validTrainMinLoss[i] = validTrainMinLoss[i * 2];
+		validTrainMaxAccu[i] = validTrainMaxAccu[i * 2];
+		validTrainAveLoss[i] = validTrainAveLoss[i * 2];
+		validTrainAveAccu[i] = validTrainAveAccu[i * 2];
 	}
 
 	for (int i = DataCap / 2; i < DataCap; i ++) {
 		validLoss[i] = 0;
 		validAccu[i] = 0;
+		validTrainMinLoss[i] = 0;
+		validTrainMaxAccu[i] = 0;
+		validTrainAveLoss[i] = 0;
+		validTrainAveAccu[i] = 0;
 	}
 
 	validIte = DataCap / 2;
@@ -122,7 +136,7 @@ void SyncPlotServer::trainUpdate(const Tensor outputs, const Tensor labels, cons
 //	refresh();
 }
 
-void SyncPlotServer::validUpdate(const Tensor outputs, const Tensor labels) {
+void SyncPlotServer::validUpdate(const Tensor outputs, const Tensor labels, vector<float> params) {
 	if (validIte >= DataCap) {
 		adjustValidVec();
 	}
@@ -131,6 +145,12 @@ void SyncPlotServer::validUpdate(const Tensor outputs, const Tensor labels) {
 	validLoss[validIte] = lossTensor.item<float>();
 	validAccu[validIte] = getAccu(outputs, labels);
 
+	if (plotValidTrain) {
+		validTrainMinLoss[validIte] = params[0];
+		validTrainAveLoss[validIte] = params[1];
+		validTrainMaxAccu[validIte] = params[2];
+		validTrainAveAccu[validIte] = params[3];
+	}
 	validIte ++;
 
 //	refresh();
@@ -138,25 +158,50 @@ void SyncPlotServer::validUpdate(const Tensor outputs, const Tensor labels) {
 
 void SyncPlotServer::refresh() {
 	matplotlibcpp::clf();
+	int extraSub = 0;
+	int extraRow = 0;
+	if (plotValidTrain) {
+		extraSub = 2;
+		extraRow = 1;
+	}
 
-	matplotlibcpp::subplot(RowNum, ColNum, 1);
+	matplotlibcpp::subplot(RowNum + extraRow, ColNum, 1);
 	matplotlibcpp::grid(true);
+	matplotlibcpp::title("TrainLoss");
 	matplotlibcpp::plot(std::vector<float>(&trainLoss[0], &trainLoss[trainIte]));
 	matplotlibcpp::plot(std::vector<float>(&trainAveLoss[0], &trainAveLoss[trainIte]));
-	matplotlibcpp::subplot(RowNum, ColNum, 2);
+	matplotlibcpp::subplot(RowNum + extraRow, ColNum, 2);
 	matplotlibcpp::grid(true);
+	matplotlibcpp::title("TrainAccuracy");
 	matplotlibcpp::plot(std::vector<float>(&trainAccu[0], &trainAccu[trainIte]));
 	matplotlibcpp::plot(std::vector<float>(&trainAveAccu[0], &trainAveAccu[trainIte]));
 
-	matplotlibcpp::subplot(RowNum, ColNum, 3);
+	if (plotValidTrain) {
+	matplotlibcpp::subplot(RowNum + extraRow, ColNum, 3);
 	matplotlibcpp::grid(true);
+	matplotlibcpp::title("ValidTrainLoss");
+	matplotlibcpp::plot(std::vector<float>(&validTrainMinLoss[0], &validTrainMinLoss[validIte]));
+	matplotlibcpp::plot(std::vector<float>(&validTrainAveLoss[0], &validTrainAveLoss[validIte]));
+	matplotlibcpp::subplot(RowNum + extraRow, ColNum, 4);
+	matplotlibcpp::grid(true);
+	matplotlibcpp::title("ValidTrainAccuracy");
+	matplotlibcpp::plot(std::vector<float>(&validTrainMaxAccu[0], &validTrainMaxAccu[validIte]));
+	matplotlibcpp::plot(std::vector<float>(&validTrainAveAccu[0], &validTrainAveAccu[validIte]));
+	}
+
+
+	matplotlibcpp::subplot(RowNum + extraRow, ColNum, 3 + extraSub);
+	matplotlibcpp::grid(true);
+	matplotlibcpp::title("ValidLoss");
 	matplotlibcpp::plot(std::vector<float>(&validLoss[0], &validLoss[validIte]));
-	matplotlibcpp::subplot(RowNum, ColNum, 4);
+	matplotlibcpp::subplot(RowNum + extraRow, ColNum, 4 + extraSub);
 	matplotlibcpp::grid(true);
+	matplotlibcpp::title("ValidAccuracy");
 	matplotlibcpp::plot(std::vector<float>(&validAccu[0], &validAccu[validIte]));
 
-	matplotlibcpp::subplot(RowNum, ColNum, 5);
+	matplotlibcpp::subplot(RowNum + extraRow, ColNum, 5 + extraSub);
 	matplotlibcpp::grid(true);
+	matplotlibcpp::title("UpdateRatio(half-)");
 	for(int i = 0; i < updateRatioNum / 2; i ++) {
 //		if ((i % 2) == 0) {
 			matplotlibcpp::plot(std::vector<float>(&updateRatio[i][0], &updateRatio[i][trainIte]));
@@ -172,8 +217,9 @@ void SyncPlotServer::refresh() {
 //	matplotlibcpp::plot(std::vector<float>(&updateRatio[7][0], &updateRatio[7][trainIte]), "tab:purple");
 //	matplotlibcpp::plot(std::vector<float>(&updateRatio[8][0], &updateRatio[8][trainIte]), "tab:blue");
 
-	matplotlibcpp::subplot(RowNum, ColNum, 6);
+	matplotlibcpp::subplot(RowNum + extraRow, ColNum, 6 + extraSub);
 	matplotlibcpp::grid(true);
+	matplotlibcpp::title("UpdateRatio(half1)");
 	for(int i = updateRatioNum / 2; i < updateRatioNum; i ++) {
 //		if ((i % 2) == 1) {
 			matplotlibcpp::plot(std::vector<float>(&updateRatio[i][0], &updateRatio[i][trainIte]));
@@ -198,7 +244,7 @@ void SyncPlotServer::refresh() {
 }
 
 void SyncPlotServer::save(const string fileName) {
-	matplotlibcpp::figure_size(2000, 2000);
+	matplotlibcpp::figure_size(2000, 2500);
 	refresh();
 	matplotlibcpp::save(fileName);
 }

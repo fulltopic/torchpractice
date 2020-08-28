@@ -132,7 +132,7 @@ vector<Msg> parseFile(string path) {
 	return msgs;
 }
 
-void service(int clientSock, vector<Msg>& msgs) {
+static void service(int clientSock, vector<Msg>& msgs) {
 	int index = 0;
 	char buff[1024] = {0};
 	int i = 0;
@@ -160,21 +160,29 @@ void service(int clientSock, vector<Msg>& msgs) {
 
 			for (int k = 0; k < rcvMsgs.size(); k ++) {
 				boost::trim(rcvMsgs[k]);
+//				cout << "Received message: " << rcvMsgs[k] << endl;
 				if (rcvMsgs[k].length() == 0) {
 					continue;
 				}
+				if (rcvMsgs[k].find("<Z") != string::npos) {
+					continue;
+				}
 
+				auto bPos = rcvMsgs[k].find("<");
+				auto ePos = rcvMsgs[k].find(">");
+				cout << rcvMsgs[k] << " --> get poses " << bPos << ", " << ePos << endl;
+				rcvMsgs[k] = rcvMsgs[k].substr(bPos, (ePos - bPos + 1));
 				int diff = msgs[i].msg.compare(rcvMsgs[k]);
 				if ( diff!= 0) {
 					cout << "Failed to match: " << diff << endl
 							<< msgs[i].msg << " --> " << endl
-							<< rcvMsg << endl;
-					cout << msgs[i].msg.length() << " --> " << rcvMsg.length() << endl;
-					for (int diffIndex = 0; diffIndex < min(msgs[i].msg.length(), rcvMsg.length()); diffIndex ++) {
+							<< rcvMsgs[k] << endl;
+					cout << msgs[i].msg.length() << " --> " << rcvMsgs[k].length() << endl;
+					for (int diffIndex = 0; diffIndex < min(msgs[i].msg.length(), rcvMsgs[k].length()); diffIndex ++) {
 						if (rcvMsg[diffIndex] != msgs[i].msg[diffIndex]) {
-							cout << "Diff " << msgs[i].msg[diffIndex] << " --> " << rcvMsg[diffIndex] << endl;
+							cout << "Diff " << msgs[i].msg[diffIndex] << " --> " << rcvMsgs[k][diffIndex] << endl;
 						} else {
-							cout << "Same " << msgs[i].msg[diffIndex] << " --> " << rcvMsg[diffIndex] << endl;
+							cout << "Same " << msgs[i].msg[diffIndex] << " --> " << rcvMsgs[k][diffIndex] << endl;
 						}
 					}
 				} else {
@@ -186,7 +194,7 @@ void service(int clientSock, vector<Msg>& msgs) {
 			cout << "To send message: " << msgs[i].msg << endl;
 			send(clientSock, msgs[i].msg.c_str(), msgs[i].msg.length(), 0);
 			i ++;
-			sleep(1);
+			sleep(3);
 		}
 
 	}

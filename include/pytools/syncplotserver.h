@@ -40,19 +40,24 @@ private:
 	int validIte;
 	std::vector<float> validLoss;
 	std::vector<float>  validAccu;
+	std::vector<float> validTrainAveLoss;
+	std::vector<float> validTrainMinLoss;
+	std::vector<float> validTrainMaxAccu;
+	std::vector<float> validTrainAveAccu;
 
 	const int updateRatioNum;
 	std::vector<torch::Tensor> lastParams;
 	std::vector<std::vector<float>> updateRatio;
 
+	bool plotValidTrain;
 public:
-	SyncPlotServer(const int paramNum, const std::vector<torch::Tensor>& parameters, const std::string iFigureName = "");
+	SyncPlotServer(const int paramNum, const std::vector<torch::Tensor>& parameters, const std::string iFigureName = "", const bool toPlotValidTrain = false);
 	~SyncPlotServer() = default;
 	SyncPlotServer(const SyncPlotServer& a) = delete;
 	SyncPlotServer& operator=(SyncPlotServer& a) = delete;
 
 	void trainUpdate(const torch::Tensor outputs, const torch::Tensor labels, const std::vector<torch::Tensor> parameters);
-	void validUpdate(const torch::Tensor outputs, const torch::Tensor labels);
+	void validUpdate(const torch::Tensor outputs, const torch::Tensor labels, const std::vector<float> params = {});
 	void refresh();
 	void save(const std::string fileName);
 

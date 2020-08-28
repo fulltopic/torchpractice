@@ -15,35 +15,14 @@
 #include <mutex>
 #include <condition_variable>
 
-#include "netproxy.h"
 #include "tenhouconn.h"
 #include "logger.h"
+#include "netproxy.hpp"
+#include "randomnet.h"
+#include "fsmtypes.h"
 
-enum StateType {
-	StartStateType,
-	HeloStateType,
-	AuthStateType,
-	JoinStateType,
-	RejoinStateType,
-	ReadyStateType,
+#include "nets/grustep.h"
 
-//	NextReadyStateType,
-	GamingStateType,
-
-	GameEndStateType,
-	SceneEndStateType,
-
-	ErrorStateType,
-};
-
-//using StateReturnType = std::pair<std::string, int>;
-struct StateReturnType {
-	static const std::string SplitToken;
-	static const std::string Nothing;
-
-	std::string msg;
-	StateType nextState;
-};
 
 class TenhouFsm;
 class TenhouFsmState {
@@ -74,7 +53,7 @@ class TenhouFsm {
 private:
 	std::map<StateType, TenhouFsmState*> states;
 	TenhouFsmState* curState;
-	NetProxy& net;
+	NetProxy<GRUStepNet>& net;
 	TenhouTcpConn conn;
 	std::mutex mtx;
 	std::condition_variable waitObj;
@@ -86,7 +65,7 @@ private:
 public:
 	static const std::string StartFsm;
 
-	TenhouFsm(NetProxy& iNet);
+	TenhouFsm(NetProxy<GRUStepNet>& iNet);
 	TenhouFsm(TenhouFsm&) = delete;
 //	TenhouFsm(TenhouFsm&) = default;
 	TenhouFsm& operator=(TenhouFsm&) = delete;

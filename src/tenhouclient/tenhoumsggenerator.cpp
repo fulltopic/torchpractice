@@ -70,9 +70,12 @@ string TenhouMsgGenerator::GenJoinMsg() {
 }
 
 string TenhouMsgGenerator::GenRejoinMsg(string msg) {
-	replace_first(msg, "REJOIN", "JOIN");
-	replace_first(msg, "/>", " />");
-	return msg;
+//	trim(msg);
+//	replace_first(msg, "REJOIN", "JOIN");
+//	replace_first(msg, "/>", " />");
+//	return msg;
+
+	return AddWrap("JOIN t=\"0,1,r\" ");
 }
 
 string TenhouMsgGenerator::GenGoMsg() {

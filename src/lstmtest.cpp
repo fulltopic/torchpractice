@@ -33,11 +33,12 @@
 #include <chrono>
 #include <functional>
 
-#include "nets/lstmnet.h"
+//#include "nets/lstmnet.h"
 #include "nets/grunet.h"
-#include "nets/fcgrunet.h"
-#include "nets/cnngrunet.h"
-#include "nets/lstm2net.h"
+//#include "nets/fcgrunet.h"
+//#include "nets/cnngrunet.h"
+//#include "nets/lstm2net.h"
+//#include "nets/rnnmasknet.h"
 
 #include "pytools/syncplotserver.h"
 
@@ -49,13 +50,15 @@ using std::endl;
 using std::cout;
 
 const std::string wsPath = "/home/zf/";
-std::ofstream dataFile(wsPath + "/workspaces/workspace_cpp/torchpractice/build/errorstats.txt");
+std::ofstream dataFile(wsPath + "/workspaces/workspace_cpp/torchpractice/build/errorstats_10.txt");
 
 std::function<void(int)> shutdownHandler;
 void signalHandler(int signal) {
 	std::cout << "Received signal " << signal << std::endl;
 	shutdownHandler(signal);
-	exit(signal);
+	if (signal != SIGINT) {
+		exit(signal);
+	}
 }
 
 static float evaluation(Tensor outputs, Tensor labels, bool isTest) {
@@ -259,6 +262,23 @@ static void trainLstmDbOverfit(LmdbSceneReader<DbDefs>& reader, NetType& net,
 
 }
 
+static void processActionInput(std::vector<Tensor>& inputs, std::vector<Tensor>& labels) {
+//	cout << inputs[0].sizes() << std::endl;
+//	cout << labels[0].sizes() << std::endl;
+	for (int i = 0; i < inputs.size(); i ++) {
+		auto inputPtr = inputs[i].accessor<float, 3>();
+		auto labelPtr = labels[i].accessor<long, 1>();
+		for (int j = 0; j < labels[i].size(0); j ++) {
+			if (labelPtr[j] >= 34) {
+//				cout << "Label is -------------------------> " << labelPtr[j] << endl;
+				for (int k = 34; k < 42; k ++) {
+					inputPtr[j][1][k] = 1;
+				}
+//				cout << "Update input: " << inputs[i][j] << endl;
+			}
+		}
+	}
+}
 
 template<typename NetType, typename DbDefs>
 static void trainLstmDbOverfit(std::vector<LmdbSceneReader<DbDefs>>& readers,
@@ -268,10 +288,10 @@ static void trainLstmDbOverfit(std::vector<LmdbSceneReader<DbDefs>>& readers,
 	optimizer.zero_grad();
 	int64_t totalNum = 0;
 	double totalLoss = 0;
-	const int epoch = 1;
-	const int batchSize = 32;
+	const int epoch = 128;
+	const int batchSize = 128;
 	const int validStep = 128;
-	const int earlyStop = 32;
+	const int earlyStop = 8;
 	const float validRatio = 0.001;
 	int stopStep = 0;
 	float lastLoss = FLT_MAX;
@@ -296,10 +316,14 @@ static void trainLstmDbOverfit(std::vector<LmdbSceneReader<DbDefs>>& readers,
 	std::vector<Tensor> validLabels;
 
 	int validSetSize = std::max(256, (int)(sampleNum * validRatio));
-	std::tie(validInputs, validLabels) = validReader.next(validSetSize, seqLen);
-	cout << "Get validation dataset: " << validInputs.size() << endl;
+	if (seqLen > 0) {
+		std::tie(validInputs, validLabels) = validReader.next(validSetSize, seqLen);
+	} else {
+		std::tie(validInputs, validLabels) = validReader.next(validSetSize);
+	}
+	cout << "Get validation dataset with db vector: " << validInputs.size() << endl;
 	validReader.reset();
-
+	processActionInput(validInputs, validLabels);
 
 	int iteNum = 1;
 
@@ -324,7 +348,13 @@ static void trainLstmDbOverfit(std::vector<LmdbSceneReader<DbDefs>>& readers,
 					break;
 				}
 			}
-			std::tie(inputs, labels) = readers[readerIndex].next(batchSize, seqLen);
+
+			if (seqLen > 0) {
+				std::tie(inputs, labels) = readers[readerIndex].next(batchSize, seqLen);
+			} else {
+				std::tie(inputs, labels) = readers[readerIndex].next(batchSize);
+			}
+			processActionInput(inputs, labels);
 
 			totalNum += inputs.size();
 
@@ -350,19 +380,19 @@ static void trainLstmDbOverfit(std::vector<LmdbSceneReader<DbDefs>>& readers,
 		}
 
 		auto validLoss = validLstmOverfitWithPlot(validInputs, validLabels, seqLen, net, plotServer);
-		std::cout << "---------------------------------> Validation loss: " << std::get<0>(validLoss)
+		std::cout << "---------------------------------> " << count << " Validation loss: " << std::get<0>(validLoss)
 				<< ", " << std::get<1>(validLoss) << std::endl;
 
-		if (std::get<0>(validLoss) < lastLoss) {
-			stopStep = 0;
-			lastLoss = std::get<0>(validLoss);
-		} else {
-			stopStep ++;
-			if (stopStep > earlyStop) {
-				std::cout << "Early stop " << std::endl;
-				break;
-			}
-		}
+//		if (std::get<0>(validLoss) < lastLoss) {
+//			stopStep = 0;
+//			lastLoss = std::get<0>(validLoss);
+//		} else {
+//			stopStep ++;
+//			if (stopStep > earlyStop) {
+//				std::cout << "Early stop " << std::endl;
+//				break;
+//			}
+//		}
 	}
 
 	saveOutput(net, plotServer);
@@ -405,6 +435,25 @@ static void test5RowsVecDbs(const float lr, const int sampleNum, const int seqLe
 	torch::optim::Adagrad optimizer(net.parameters(), torch::optim::AdagradOptions(lr));
 
 	trainLstmDbOverfit(readers, validReader, net, optimizer, sampleNum, seqLen);
+}
+
+template<typename NetType>
+static void test5RowsVecDbsMask(const float lr, const int sampleNum, const int seqLen) {
+	std::vector<std::string> dbPaths {
+		wsPath + "/workspaces/res/dbs/lmdb5rowscenetest",
+		wsPath + "/workspaces/res/dbs/lmdb5rowscenetest_3",
+		wsPath + "/workspaces/res/dbs/lmdb5rowscenetest_4"
+	};
+
+	std::vector<LmdbSceneReader<LmdbDataDefs>> readers (dbPaths.begin(), dbPaths.end());
+
+	std::string validDbPath = wsPath + "/workspaces/res/dbs/lmdb5rowscenetestvalid";
+	LmdbSceneReader<LmdbDataDefs> validReader(validDbPath);
+
+	NetType net(seqLen);
+	torch::optim::Adagrad optimizer(net.parameters(), torch::optim::AdagradOptions(lr));
+
+	trainLstmDbOverfit(readers, validReader, net, optimizer, sampleNum, -1);
 }
 
 //Currently, model seqlen = 10
@@ -493,6 +542,33 @@ static void getDbCap() {
 	std::cout << "Db cap: " << count << std::endl;
 }
 
+//max = 27
+static void getMaxSeqLen() {
+	std::vector<std::string> dbPaths {
+		wsPath + "/workspaces/res/dbs/lmdb5rowscenetest",
+		wsPath + "/workspaces/res/dbs/lmdb5rowscenetest_3",
+		wsPath + "/workspaces/res/dbs/lmdb5rowscenetest_4"
+	};
+
+	std::vector<LmdbSceneReader<LmdbDataDefs>> readers (dbPaths.begin(), dbPaths.end());
+
+	int index = 0;
+	int maxSeq = 0;
+	torch::Tensor input;
+	torch::Tensor label;
+	while (index < readers.size()) {
+		if (readers[index].hasNext()) {
+			std::tie(input, label) = readers[index].next();
+			if (input.size(0) > maxSeq) {
+				maxSeq = input.size(0);
+				cout << "Update max seq " << maxSeq << endl;
+			}
+		} else {
+			index ++;
+		}
+	}
+}
+
 int main(int argc, char** argv) {
 	const float lr = atof(argv[2]);
 	const int sampleNum = atoi(argv[1]);
@@ -503,14 +579,16 @@ int main(int argc, char** argv) {
 //	test5RowThread(lr);
 
 //	getDbCap();
+//	getMaxSeqLen();
 
 //	testLoadedModel<GRUNet>("GRUNet_1585855488.pt", sampleNum, seqLen);
 //	testLoadedModel<LstmNet>("./LstmNet_1585131414.pt", sampleNum, seqLen);
 //	test5Rows<LstmNet>(lr, sampleNum, seqLen);
-	test5RowsVecDbs<LstmNet>(lr, sampleNum, seqLen);
+//	test5RowsVecDbs<LstmNet>(lr, sampleNum, seqLen);
 //	test5Rows<GRUNet>(lr, sampleNum, seqLen);
 //	test5Rows<FcGRUNet>(lr, sampleNum, seqLen);
-//	test5RowsVecDbs<GRUNet>(lr, sampleNum, seqLen);
+	test5RowsVecDbs<GRUNet>(lr, sampleNum, seqLen);
+//	test5RowsVecDbsMask<GRUMaskNet>(lr, sampleNum, 27);
 //	test5RowsVecDbs<CnnGRUNet>(lr, sampleNum, seqLen);
 //	test5RowsVecDbs<FcGRUNet>(lr, sampleNum, seqLen);
 //	test5RowsVecDbs<Lstm2Net>(lr, sampleNum, seqLen);
