@@ -32,7 +32,7 @@
 void test(std::string path) {
 	auto logger = Logger::GetLogger();
 
-	LstmState innState(72, 5);
+	BaseState innState(72, 5);
 	DirPolicy policy(path);
 	policy.init();
 	logger->info("Policy initiated ");
@@ -41,7 +41,7 @@ void test(std::string path) {
 	NetProxy<GRUStepNet> netProxy(std::shared_ptr<GRUStepNet>(new GRUStepNet()), innState, policy);
 	boost::asio::io_context io;
 
-	auto pointer = asiotenhoufsm<GRUStepNet>::Create(io, netProxy);
+	auto pointer = asiotenhoufsm<GRUStepNet>::Create(io, netProxy, "NoName");
 	pointer->start();
 
 	io.run();

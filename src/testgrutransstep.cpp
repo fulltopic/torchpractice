@@ -129,7 +129,7 @@ static std::pair<float, float> validLstmOverfitWithPlot(std::vector<Tensor>& inp
 
 	for (int i = 0; i < seqLen; i ++) {
 		auto output = net.forward({inputVec[i].div(4)}, false);
-		outputs.push_back(output);
+		outputs.push_back(output[0]);
 	}
 
 	//{batchSize, 42}

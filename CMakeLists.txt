@@ -41,6 +41,7 @@ add_subdirectory(src/nets/supervisednet)
 add_subdirectory(src/tenhouclient)
 add_subdirectory(src/policy)
 add_subdirectory(src/gymtest)
+add_subdirectory(src/rltest)
 
 link_directories(${CAFFE2_LIB_PATH})
 
@@ -221,3 +222,20 @@ add_executable(lunalstm6 src/gymtest/lunarlstm6.cpp  $<TARGET_OBJECTS:gymtest>)
 target_compile_features(lunalstm6 PUBLIC cxx_range_for)
 target_link_libraries(lunalstm6 ${shared_libs} ${static_libs} ${pytorch_cpp_rl_lib})
 
+######################################### RL test ######################################################
+add_executable(rll2transfertest src/rltest/loadl2modeltest.cpp $<TARGET_OBJECTS:lmdbtools> $<TARGET_OBJECTS:nets> $<TARGET_OBJECTS:pytools>)
+target_compile_features(rll2transfertest PUBLIC cxx_range_for)
+target_link_libraries(rll2transfertest ${shared_libs} ${static_libs})
+
+
+add_executable(rlbatchtransfertest src/rltest/loadmaskbatchmodeltest.cpp $<TARGET_OBJECTS:lmdbtools> $<TARGET_OBJECTS:nets> $<TARGET_OBJECTS:pytools>)
+target_compile_features(rlbatchtransfertest PUBLIC cxx_range_for)
+target_link_libraries(rlbatchtransfertest ${shared_libs} ${static_libs})
+
+add_executable(testmaskbatchnet src/rltest/testmaskbatchnet.cpp $<TARGET_OBJECTS:lmdbtools> $<TARGET_OBJECTS:nets> $<TARGET_OBJECTS:pytools> $<TARGET_OBJECTS:rltest>)
+target_compile_features(testmaskbatchnet PUBLIC cxx_range_for)
+target_link_libraries(testmaskbatchnet ${shared_libs} ${static_libs})
+
+add_executable(testmaskbatchclient src/rltest/testmaskbatchclient.cpp $<TARGET_OBJECTS:lmdbtools> $<TARGET_OBJECTS:nets> $<TARGET_OBJECTS:rltest> $<TARGET_OBJECTS:tenhouclient> $<TARGET_OBJECTS:policy> $<TARGET_OBJECTS:pytools>)
+target_compile_features(testmaskbatchclient PUBLIC cxx_range_for)
+target_link_libraries(testmaskbatchclient ${shared_libs} ${static_libs})

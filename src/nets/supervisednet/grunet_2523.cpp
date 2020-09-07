@@ -46,7 +46,7 @@ void GruNet_2523::loadParams(const string modelPath) {
 	}
 }
 
-Tensor GruNet_2523::forward(vector<Tensor> inputs) {
+std::vector<torch::Tensor> GruNet_2523::forward(vector<Tensor> inputs) {
 //	Tensor input = inputs[0];
 //	Tensor state = inputs[1];
 //
@@ -89,7 +89,7 @@ static void printData(const Tensor tensor, const std::string desc) {
 	std::cout << std::endl;
 }
 
-Tensor GruNet_2523::forward(std::vector<Tensor> inputs, bool isTrain) {
+std::vector<torch::Tensor> GruNet_2523::forward(std::vector<Tensor> inputs, bool isTrain) {
 	//input sizes = {batch, 1, 360}
 	//state sizes = {1, batch, 1024}
 	Tensor input = inputs[0];
@@ -116,7 +116,7 @@ Tensor GruNet_2523::forward(std::vector<Tensor> inputs, bool isTrain) {
 //	auto smOutput = output.softmax(2);
 
 //	return output;
-	return output.view({output.size(0) * output.size(1), output.size(2)});
+	return {output.view({output.size(0) * output.size(1), output.size(2)})};
 }
 
 void GruNet_2523::reset() {

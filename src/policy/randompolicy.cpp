@@ -29,11 +29,13 @@ RandomPolicy::RandomPolicy(float rate): rndRate(rate), logger(Logger::GetLogger(
 	std::srand(time(nullptr));
 }
 
+RandomPolicy::~RandomPolicy() {}
+
 int RandomPolicy::getAction(Tensor values, vector<int> candidates) {
-	auto rc = values.sort(1, true);
+	auto rc = values.sort(-1, true);
 	auto indexes = std::get<1>(rc);
-	cout << "indexes " << indexes << endl;
-	cout << "sorted values: " << std::get<0>(rc) << endl;
+//	cout << "indexes " << indexes << endl;
+//	cout << "sorted values: " << std::get<0>(rc) << endl;
 
 	if ((rand() % 100) > (rndRate * 100)) {
 //	std::cout << "Get values sizes " << values.sizes() << std::endl;

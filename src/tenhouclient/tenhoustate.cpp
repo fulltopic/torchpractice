@@ -39,7 +39,7 @@ TenhouState::~TenhouState() {}
 //static const int RonAction = ReachAction + 1;
 //static const int NOOPAction = RonAction + 1;
 
-LstmState::LstmState(int ww, int hh):
+BaseState::BaseState(int ww, int hh):
 		w(ww), h(hh),
 		isReach(false),
 		isOwner(false),
@@ -48,16 +48,16 @@ LstmState::LstmState(int ww, int hh):
 	innerState = torch::zeros({h, w});
 }
 
-LstmState::~LstmState() {}
+BaseState::~BaseState() {}
 
-void LstmState::addTile(int raw) {
+void BaseState::addTile(int raw) {
 	myTiles[raw] = true;
 	innerState[0][P::Raw2Tile(raw)] += 1;
 //	logger->debug("Add tile: " + raw);
 }
 
 //TODO: where to put dropped tile of me?
-void LstmState::dropTile(int who, int raw) {
+void BaseState::dropTile(int who, int raw) {
 	int tile = P::Raw2Tile(raw);
 	if (who == ME) {
 		innerState[0][tile] -= 1;
@@ -70,7 +70,7 @@ void LstmState::dropTile(int who, int raw) {
 	}
 }
 
-void LstmState::fixTile(int who, vector<int> raw) {
+void BaseState::fixTile(int who, vector<int> raw) {
 	if (who == ME) {
 		auto data = innerState.accessor<float, 2>();
 
@@ -105,20 +105,20 @@ void LstmState::fixTile(int who, vector<int> raw) {
 	}
 }
 
-void LstmState::setReach(int playerIndex) {
+void BaseState::setReach(int playerIndex) {
 	if (playerIndex == ME) {
 		isReach = true;
 		innerState[0][ReachPos] = 1;
 	} else {
-		innerState[playerIndex + 1][ReachPos] = 1;
+		innerState[stateIndex(playerIndex)][ReachPos] = 1;
 	}
 }
 
-void LstmState::setDora(int dora) {
+void BaseState::setDora(int dora) {
 	doras.insert(dora);
 }
 
-void LstmState::reset() {
+void BaseState::reset() {
 	myTiles.assign(myTiles.size(), false);
 	innerState = innerState.fill_(0);
 	doras.clear();
@@ -140,7 +140,7 @@ void LstmState::reset() {
 //	return vector<int>();
 //}
 
-vector<int> LstmState::getPongTiles(int raw) {
+vector<int> BaseState::getPongTiles(int raw) {
 	logger->debug("To get pong tiles for {}", raw);
 	int tile = P::Raw2Tile(raw);
 	vector<int> tiles;
@@ -159,7 +159,7 @@ vector<int> LstmState::getPongTiles(int raw) {
 	return tiles;
 }
 
-vector<int> LstmState::getChowTiles(int raw) {
+vector<int> BaseState::getChowTiles(int raw) {
 	logger->debug("Get chow tiles for {}", raw);
 	//TODO: To get use of state to remove realtime counting
 
@@ -253,7 +253,7 @@ vector<int> LstmState::getChowTiles(int raw) {
 
 }
 
-vector<int> LstmState::getDropCandidates() {
+vector<int> BaseState::getDropCandidates() {
 	vector<int> tiles;
 
 	auto stateData = innerState.accessor<float, 2>();
@@ -266,7 +266,7 @@ vector<int> LstmState::getDropCandidates() {
 }
 
 //TODO int --> StealType
-vector<int> LstmState::getCandidates(int type, int raw) {
+vector<int> BaseState::getCandidates(int type, int raw) {
 	auto stateData = innerState.accessor<float, 2>();
 	logger->debug("Get candidates for {}, {}", type, raw);
 
@@ -290,7 +290,8 @@ vector<int> LstmState::getCandidates(int type, int raw) {
 				tiles.push_back(i);
 			}
 		}
-		tiles.push_back(NOOPAction);
+		tiles.push_back(ReachAction);
+//		tiles.push_back(NOOPAction); //TODO: Seemed dropping directly means noop
 		return tiles;
 	} else if (type == StealType::PongType) {
 		auto tiles = getDropCandidates();
@@ -317,7 +318,7 @@ vector<int> LstmState::getCandidates(int type, int raw) {
 	return vector<int>();
 }
 
-bool LstmState::is7Pair(const vector<int>& nums) {
+bool BaseState::is7Pair(const vector<int>& nums) {
 	int count = 0;
 	for (int i = 0; i < nums.size(); i ++) {
 		switch (nums[i]) {
@@ -337,7 +338,7 @@ bool LstmState::is7Pair(const vector<int>& nums) {
 	return (count == 6);
 }
 
-set<int> LstmState::get7PairTiles(const vector<int>& nums) {
+set<int> BaseState::get7PairTiles(const vector<int>& nums) {
 	logger->debug("Get 7 pairs reach tiles");
 	set<int> tiles;
 	for (int i = 0; i < nums.size(); i ++) {
@@ -352,7 +353,7 @@ set<int> LstmState::get7PairTiles(const vector<int>& nums) {
 static set<int> OrphanTiles {
 	0, 8, 9, 17, 18, 26, 27, 28, 29, 30, 31, 32, 33
 };
-bool LstmState::is13Orphan(const vector<int>& nums) {
+bool BaseState::is13Orphan(const vector<int>& nums) {
 
 
 	int count = 0;
@@ -365,7 +366,7 @@ bool LstmState::is13Orphan(const vector<int>& nums) {
 	return (count == 12);
 }
 
-set<int> LstmState::get13OrphanTiles(const vector<int>& nums) {
+set<int> BaseState::get13OrphanTiles(const vector<int>& nums) {
 	logger->debug("Get 13 reach tiles ");
 	int tile = -1;
 
@@ -391,7 +392,7 @@ static bool isChowNb(int tile1, int tile2) {
 			&& (tile1 < 27) && (tile2 < 27);
 }
 
-void LstmState::get4GroupTiles(vector<int>& nums, set<int>& tiles, bool hasPair) {
+void BaseState::get4GroupTiles(vector<int>& nums, set<int>& tiles, bool hasPair) {
 	cout << "Try 4 group " << endl;
 	for (int i = 0; i < nums.size(); i ++) {
 		cout << nums[i] << ", ";
@@ -528,7 +529,7 @@ void LstmState::get4GroupTiles(vector<int>& nums, set<int>& tiles, bool hasPair)
 	}
 }
 
-vector<int> LstmState::getReachTiles(int raw) {
+vector<int> BaseState::getReachTiles(int raw) {
 	logger->debug("To get reach tiles for {}", raw);
 	set<int> reachTiles;
 
@@ -581,7 +582,7 @@ vector<int> LstmState::getReachTiles(int raw) {
 	return rcTiles;
 }
 
-vector<int> LstmState::getTiles(int type, int raw) {
+vector<int> BaseState::getTiles(int type, int raw) {
 	static auto logger = Logger::GetLogger();
 
 //	if ((type >= 0) && (type < TileNum)) {
@@ -626,13 +627,13 @@ vector<int> LstmState::getTiles(int type, int raw) {
 	}
 }
 
-int LstmState::getChow() { return ChowAction; }
-int LstmState::getPong() { return PongAction; }
-int LstmState::getReach() { return ReachAction; }
+int BaseState::getChow() { return ChowAction; }
+int BaseState::getPong() { return PongAction; }
+int BaseState::getReach() { return ReachAction; }
 
-vector<Tensor> LstmState::getState(int indType) {
+Tensor BaseState::getState(int indType) {
 //	int tile = P::Raw2Tile(raw);
-	Tensor cpy = innerState.clone();
+	Tensor cpy = innerState.detach().clone(); //TODO: Maybe detach is not necessary
 
 //	switch (indType) {
 //	case StealType::ChowType:
@@ -663,11 +664,15 @@ vector<Tensor> LstmState::getState(int indType) {
 	return {cpy.view({1, 1, w * h}).div(4)};
 }
 
-vector<Tensor> LstmState::endGame() {
+//void BaseState::updateState(vector<Tensor> newStates) {
+//	//nothing
+//}
+
+vector<Tensor> BaseState::endGame() {
 	return vector<Tensor> ();
 }
 
-bool LstmState::isReached(int playerIndex) {
+bool BaseState::isReached(int playerIndex) {
 	auto data = innerState.accessor<float, 2>();
 	if (playerIndex == ME) {
 		return (data[0][ReachPos] > 0);
@@ -676,7 +681,7 @@ bool LstmState::isReached(int playerIndex) {
 	}
 }
 
-bool LstmState::canKan(int tile, vector<int>& candidates) {
+bool BaseState::canKan(int tile, vector<int>& candidates) {
 	if ((tile >= 0) && (tile < 34)) {
 		auto data = innerState.accessor<float, 2>();
 		logger->debug("cankan for {}: {}, {}", tile, data[0][tile], data[0][tile + TileNum]);

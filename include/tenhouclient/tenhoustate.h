@@ -18,7 +18,8 @@
 class TenhouState {
 public:
 	virtual ~TenhouState() = 0;
-	virtual std::vector<torch::Tensor> getState(int indType) = 0;
+	virtual torch::Tensor getState(int indType) = 0;
+//	virtual void updateState(std::vector<torch::Tensor> newStates) = 0;
 	virtual void addTile(int raw) = 0;
 	virtual void dropTile(int who, int raw) = 0;
 	virtual void fixTile(int who, std::vector<int> raw) = 0;
@@ -76,8 +77,8 @@ enum LstmStatePos {
 };
 
 //TODO: state for lstm step
-class LstmState: public TenhouState {
-private:
+class BaseState: public TenhouState {
+protected:
 
 	std::vector<bool> myTiles;
 	torch::Tensor innerState;
@@ -113,13 +114,16 @@ private:
 	void get4GroupTiles(std::vector<int>& nums, std::set<int>& tiles, bool hasPair);
 
 public:
-	LstmState(int ww, int hh);
-	virtual ~LstmState();
+	BaseState(int ww, int hh);
+	virtual ~BaseState();
 
 	void setReach(int playerIndex);
 	inline void setOwner(int oya) { isOwner = (oya == ME); }
 	virtual bool isReached(int playerIndex);
-	virtual std::vector<torch::Tensor> getState(int indType);
+	virtual torch::Tensor getState(int indType);
+	//For RNN
+//	virtual void updateState(std::vector<torch::Tensor> newStates);
+
 	virtual void addTile(int raw);
 	virtual void dropTile(int who, int raw);
 	virtual void fixTile(int who, std::vector<int> raw);

@@ -17,7 +17,7 @@
 #include <boost/asio.hpp>
 #include <boost/thread/thread.hpp>
 #include <boost/bind/bind.hpp>
-#include <thread>
+//#include <thread>
 
 #include "tenhouclient/asiotenhoufsm.hpp"
 #include "policy/filepolicy.h"
@@ -26,12 +26,12 @@
 
 #include "nets/supervisednet/grunet_2523.h"
 
-void test(std::string path) {
+static void test(std::string path) {
 	std::string modelPath = "/home/zf/workspaces/workspace_cpp/torchpractice/build/models/candidates/GRUNet_1585782523.pt";
 
 	auto logger = Logger::GetLogger();
 
-	LstmState innState(72, 5);
+	BaseState innState(72, 5);
 	FilePolicy policy(path);
 	policy.init();
 	logger->info("Policy initiated ");
@@ -42,7 +42,7 @@ void test(std::string path) {
 //	NetProxy<GRUStepNet> netProxy(std::shared_ptr<GRUStepNet>(new GRUStepNet()), innState, policy);
 	boost::asio::io_context io;
 
-	auto pointer = asiotenhoufsm<GruNet_2523>::Create(io, netProxy);
+	auto pointer = asiotenhoufsm<GruNet_2523>::Create(io, netProxy, "NoName");
 	pointer->start();
 
 	io.run();

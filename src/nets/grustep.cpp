@@ -117,11 +117,11 @@ void GRUStepNet::initParams() {
 	}
 }
 
-Tensor GRUStepNet::forward(std::vector<Tensor> inputs) {
+std::vector<Tensor> GRUStepNet::forward(std::vector<Tensor> inputs) {
 	return forward(inputs, false);
 }
 
-Tensor GRUStepNet::forward(std::vector<Tensor> inputs, bool isTrain) {
+std::vector<Tensor> GRUStepNet::forward(std::vector<Tensor> inputs, bool isTrain) {
 //	gru0->train(isTrain);
 //	batchNorm0->train(isTrain);
 //	fc->train(isTrain);
@@ -148,7 +148,7 @@ Tensor GRUStepNet::forward(std::vector<Tensor> inputs, bool isTrain) {
 	Tensor output = torch::log_softmax(fcOutput, 2);
 
 //	return output;
-	return output.view({output.size(0) * output.size(1), output.size(2)});
+	return {output.view({output.size(0) * output.size(1), output.size(2)})};
 }
 
 void GRUStepNet::reset() {

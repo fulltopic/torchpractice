@@ -174,16 +174,16 @@ void GRUTransStepNet::initParams() {
 }
 
 //TODO: What default for isBatch?
-Tensor GRUTransStepNet::forward(std::vector<Tensor> inputs) {
+std::vector<Tensor> GRUTransStepNet::forward(std::vector<Tensor> inputs) {
 	return forward(inputs, false);
 }
 
-Tensor GRUTransStepNet::forwardBatch(std::vector<Tensor>& inputs) {
+std::vector<Tensor> GRUTransStepNet::forwardBatch(std::vector<Tensor>& inputs) {
 	//TODO
-	return torch::rand({1, 42});
+	return {torch::rand({1, 42})};
 }
 
-Tensor GRUTransStepNet::forwardStep(std::vector<Tensor>& inputs) {
+std::vector<Tensor> GRUTransStepNet::forwardStep(std::vector<Tensor>& inputs) {
 	std::cout << "BatchNorm sizes " << std::endl;
 
 
@@ -235,13 +235,13 @@ Tensor GRUTransStepNet::forwardStep(std::vector<Tensor>& inputs) {
 //	std::cout << "-------------------------> Output " << std::endl;
 //	std::cout << output << std::endl;
 
-	return output.view({output.size(0) * output.size(1), output.size(2)});
+	return {output.view({output.size(0) * output.size(1), output.size(2)})};
 
 //	auto rc = torch::rand({1, 42});
 //	return rc;
 }
 
-Tensor GRUTransStepNet::forward(std::vector<Tensor> inputs, bool isBatch) {
+std::vector<Tensor> GRUTransStepNet::forward(std::vector<Tensor> inputs, bool isBatch) {
 	std::cout << "-------------------------> isBatch: " << isBatch << std::endl;
 	//input sizes = {batch, 1, 360}
 //	//state sizes = {1, batch, 1024}

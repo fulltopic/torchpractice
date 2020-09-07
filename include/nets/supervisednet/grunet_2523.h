@@ -36,8 +36,8 @@ public:
 //	void loadParams();
 
 	torch::Tensor inputPreprocess(torch::Tensor);
-	torch::Tensor forward(std::vector<torch::Tensor> inputs, bool isTrain);
-	torch::Tensor forward(std::vector<torch::Tensor> inputs);
+	std::vector<torch::Tensor> forward(std::vector<torch::Tensor> inputs, bool isTrain);
+	std::vector<torch::Tensor> forward(std::vector<torch::Tensor> inputs);
 	void loadParams(const std::string modelPath);
 	void reset();
 

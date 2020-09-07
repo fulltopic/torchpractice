@@ -33,7 +33,7 @@ static void test(string path) {
 	auto logger = Logger::GetLogger();
 //	string path = "/home/zf/workspaces/workspace_cpp/torchpractice/src/tenhouclienttest/reachtestlog.txt";
 //	string path = "/home/zf/workspaces/workspace_cpp/torchpractice/build/tenhoulogs/tenhoulog38.txt";
-	LstmState innState(72, 5);
+	BaseState innState(72, 5);
 	FilePolicy policy(path);
 	policy.init();
 	logger->info("Policy initiated ");

@@ -28,15 +28,88 @@
 //#include "tenhouclient/tenhoufsm.h"
 #include "fsmtypes.h"
 
+template <typename T>
+struct HasCreateHState {
+	template<typename U, torch::Tensor (U::*)()> struct SFINEA {};
+	template<typename U> static char Test(SFINEA<U, &U::createHState>*);
+	template<typename U> static int Test(...);
+	static const bool Has = (sizeof(Test<T>(0)) == sizeof(char));
+};
 
-template <class NetType>
+enum StorageIndex {
+	InputIndex = 0,
+	HStateIndex = 1,
+	LabelIndex = 2,
+	ActionIndex = 3,
+	RewardIndex = 4,
+};
+
+template <int capacity>
+struct StateStoreType {
+	using StoreDataType = std::vector<std::vector<torch::Tensor>>;
+
+	uint8_t curSeq;
+	int curIndex;
+
+	StoreDataType trainStates;
+	StoreDataType trainHStates;
+	StoreDataType trainLabels; //action executed
+	StoreDataType trainActions; //action calculated
+	std::vector<float> rewards;
+
+
+	StateStoreType(): curSeq(0), curIndex(0),
+			trainStates(capacity, std::vector<torch::Tensor>()),
+			trainHStates(capacity, std::vector<torch::Tensor>()),
+			trainLabels(capacity, std::vector<torch::Tensor>()),
+			trainActions(capacity, std::vector<torch::Tensor>()),
+			rewards(capacity, 0.0f)
+	{
+	}
+
+	void reset() {
+		curSeq ++;
+		curIndex = curSeq % capacity;
+
+		trainStates[curIndex].clear();
+		trainHStates[curIndex].clear();
+		trainLabels[curIndex].clear();
+		trainActions[curIndex].clear();
+		rewards[curIndex] = 0.0f;
+	}
+
+	StoreDataType getLastData() {
+		int lastIndex = (curSeq - 1) % capacity;
+
+		return {trainStates[lastIndex], trainHStates[lastIndex], trainLabels[lastIndex], trainActions[lastIndex], {torch::tensor(rewards[lastIndex])}};
+	}
+
+	int getCurIndex () {
+		return curIndex;
+	}
+};
+
+
+template <typename NetType>
 class NetProxy {
+
 private:
 //	torch::Tensor board;
 	TenhouState& innerState;
 
+	//For training
+//	std::vector<torch::Tensor> trainStates;
+//	std::vector<torch::Tensor> trainActions;
+//	std::vector<torch::Tensor> trainLabels;
+
 //	torch::Tensor rnnHidden;
 //	torch::Tensor rnnState;
+	bool isGru;
+	torch::Tensor gruHState;
+	int step;
+//	std::vector<torch::Tensor> trainHStates;
+	//TODO: To get reward of each match
+	StateStoreType<2> storage;
 
 	//RandomNet net;
 	TenhouPolicy& policy;
@@ -61,25 +134,99 @@ private:
 	std::string processRonInd(int fromWho, int raw, int type, bool isTsumogiri);
 	std::string processGameEndInd(std::string msg);
 
+	torch::Tensor updateNet(int indType);
+	void updateLabelStore(int label);
+	void updateReward(float reward);
+	std::vector<std::vector<torch::Tensor>> getStates();
+
+//	template<typename T>
+	void initGru(std::true_type) {
+		logger->error("initGru");
+		isGru = true;
+		gruHState = net->createHState();
+		step = 0;
+	}
+
+//	template<typename T>
+	void initGru(std::false_type){
+		logger->error("init non gru");
+	};
+
 public:
 	NetProxy(std::shared_ptr<NetType> net, TenhouState& state, TenhouPolicy& iPolicy);
 	~NetProxy() = default;
 	std::string processMsg(std::string msg);
 	void reset();
+	void updateNet(std::shared_ptr<NetType> net);
 };
 
 
 using P = TenhouMsgParser;
 using G = TenhouMsgGenerator;
 
+
+template<class NetType>
+void NetProxy<NetType>::updateLabelStore(int label) {
+	int curIndex = storage.getCurIndex();
+	storage.trainLabels[curIndex].push_back(torch::tensor(label));
+}
+
+template<class NetType>
+void NetProxy<NetType>::updateReward(float reward) {
+	storage.rewards[storage.curIndex] = reward;
+}
+
 template <class NetType>
 NetProxy<NetType>::NetProxy(std::shared_ptr<NetType> iNet, TenhouState& state, TenhouPolicy& iPolicy):
 	innerState(state),
+	isGru(false),
+	step(0),
 	policy(iPolicy),
 	net(iNet),
 	logger(Logger::GetLogger()){
 
+	initGru(std::integral_constant<bool, HasCreateHState<NetType>::Has>());
 }
+
+template <class NetType>
+torch::Tensor NetProxy<NetType>::updateNet(int indType) {
+	const int curIndex = storage.getCurIndex();
+
+	if (isGru) {
+		logger->debug("updateNet gru");
+		torch::Tensor state = innerState.getState(indType);
+
+		storage.trainStates[curIndex].push_back(state.detach().clone()); //TODO: Maybe detach not necessary
+		storage.trainHStates[curIndex].push_back(gruHState.detach().clone());
+
+		std::vector<torch::Tensor> netOutput = net->forward(std::vector{state, gruHState, torch::tensor(step)});
+		// get max index
+		torch::Tensor actProb = netOutput[0];
+		actProb = actProb.clamp(1.21e-7, 1.0f - 1.21e-7);
+		torch::Tensor action = actProb.multinomial(1, false);
+		storage.trainActions[curIndex].push_back(action);
+
+		gruHState = netOutput[1];
+		step ++;
+		return netOutput[0];
+	} else {
+		logger->debug("updateNet non gru");
+		torch::Tensor state = innerState.getState(indType);
+
+		storage.trainStates[curIndex].push_back(state.detach().clone()); //TODO: Maybe detach not necessary
+
+		std::vector<torch::Tensor> netOutput = net->forward(std::vector{state});
+
+		torch::Tensor actProb = netOutput[0];
+		actProb = actProb.clamp(1.21e-7, 1.0f - 1.21e-7);
+		torch::Tensor action = actProb.multinomial(1, false);
+		storage.trainActions[curIndex].push_back(action);
+
+		return netOutput[0];
+	}
+}
+
+
 
 //TODO: FSM reset?
 template <class NetType>
@@ -87,6 +234,14 @@ void NetProxy<NetType>::reset() {
 	innerState.reset();
 	policy.reset();
 	net->reset();
+
+	initGru(std::integral_constant<bool, HasCreateHState<NetType>::Has>());
+
+}
+
+template <class NetType>
+std::vector<std::vector<torch::Tensor>> NetProxy<NetType>::getStates() {
+	return std::move(storage.getLastData());
 }
 
 //TODO: Reset
@@ -141,8 +296,11 @@ std::string NetProxy<NetType>::processAccept(std::string msg) {
 		logger->debug("Get candidate {}", candidates[i]);
 	}
 	//TODO: state take consideration of kan
-	auto output = net->forward(innerState.getState(StealType::DropType));
+//	auto output = net->forward(innerState.getState(StealType::DropType));
+	torch::Tensor output = updateNet(StealType::DropType);
+
 	int action = policy.getAction(output, candidates);
+	updateLabelStore(action); //TODO: For rl
 	logger->debug("Extract action from policy {}", action);
 	//kan
 	//4 --> ankan
@@ -193,11 +351,16 @@ std::string NetProxy<NetType>::processNMsg(std::string msg) {
 		if ((rc.flag != ChowFlag) && (rc.flag != PongFlag)) {
 			return StateReturnType::Nothing;
 		}
-		auto input = innerState.getState(StealType::DropType);
-		auto output = net->forward(input);
+
+		//zf: netforward
+//		auto input = innerState.getState(StealType::DropType);
+//		auto output = net->forward(input);
+		torch::Tensor output = updateNet(StealType::DropType);
+
 		auto candidates = innerState.getCandidates(StealType::DropType, -1);
 		int action = policy.getAction(output, candidates);
 		auto dropTiles = innerState.getTiles(StealType::DropType, action);
+		updateLabelStore(action); //TODO: For rl
 
 		return G::GenDropMsg(dropTiles[0]);
 	} else {
@@ -218,9 +381,13 @@ template <class NetType>
 std::string NetProxy<NetType>::processChowInd(int fromWho, int raw) {
 	innerState.dropTile(fromWho, raw);
 
-	auto input = innerState.getState(StealType::ChowType);
-	auto output = net->forward(input);
+	//zf: netForward
+//	auto input = innerState.getState(StealType::ChowType);
+//	auto output = net->forward(input);
+	torch::Tensor output = updateNet(StealType::ChowType);
+
 	auto action = policy.getAction(output, innerState.getCandidates(StealType::ChowType, raw));
+	updateLabelStore(action); //For rl
 	logger->debug("Get action for chow indicator {}", action);
 
 	if (action == ChowAction) {
@@ -238,9 +405,13 @@ std::string NetProxy<NetType>::processPongInd(int fromWho, int raw) {
 	//Remove when received N message
 	innerState.dropTile(fromWho, raw);
 
-	auto input = innerState.getState(StealType::PongType);
-	auto output = net->forward(input);
+	//zf: netForward
+//	auto input = innerState.getState(StealType::PongType);
+//	auto output = net->forward(input);
+	torch::Tensor output = updateNet(StealType::PongType);
+
 	auto action = policy.getAction(output, innerState.getCandidates(StealType::PongType, raw));
+	updateLabelStore(action); //TODO: For rl
 
 	//TODO: replace == by function of state object
 	if (action == PongAction) {
@@ -284,6 +455,7 @@ std::string NetProxy<NetType>::processRonInd(int fromWho, int raw, int type, boo
 	return reply;
 }
 
+//TODO: Failed to extract reward
 template <class NetType>
 std::string NetProxy<NetType>::processGameEndInd(std::string msg) {
 	int reward = 0;
@@ -300,8 +472,12 @@ std::string NetProxy<NetType>::processGameEndInd(std::string msg) {
 		reward = P::ParseRyu(msg);
 	}
 
-	std::vector<torch::Tensor> inputs = innerState.endGame();
-	//TODO: To inject inputs into net back storage
+	logger->info("Reward of the game: {}", reward);
+
+//	std::vector<torch::Tensor> inputs = innerState.endGame();
+	updateReward(reward);
+	storage.reset();
+
 //	policy.reset();
 
 	return StateReturnType::Nothing;
@@ -313,27 +489,40 @@ std::string NetProxy<NetType>::processReachInd(int raw) {
 	//TODO: without impact on original board state
 	//Net to decide if reach
 	innerState.addTile(raw);
-	auto inputs = innerState.getState(StealType::ReachType);
-	auto output = net->forward(inputs);
+
+	//zf: netForward
+//	auto inputs = innerState.getState(StealType::ReachType);
+//	auto output = net->forward(inputs);
+	torch::Tensor output = updateNet(StealType::ReachType);
 
 	auto tiles = innerState.getCandidates(StealType::ReachType, raw);
 
-	//TODO: Pay attention to at::Tensor and torch::Tensor
 	auto action = policy.getAction(output, tiles);
+	updateLabelStore(action); //For rl
 
 	if (innerState.toReach(action)) {
 		logger->debug("To reach ");
 		innerState.setReach(ME);
 
-//		vector<int> excludes {innerState.getReach(), P::Raw2Tile(raw)};
-		//Maybe not needed
-		int dropTile = policy.getAction(output, tiles); //Reach has lots of constraints, not to policied
-		logger->debug("Get dropTile from policy for reach: {}", dropTile);
-		auto dropTiles = innerState.getTiles(StealType::ReachType, dropTile);
+
+
+//		int dropTile = policy.getAction(output, tiles); //Reach has lots of constraints, not to policied
+//		logger->debug("Get dropTile from policy for reach: {}", dropTile);
+//		auto dropTiles = innerState.getTiles(StealType::ReachType, dropTile);
+		//TODO: To optimize
+		auto reachRaws = innerState.getTiles(StealType::ReachType, -1);
+		std::set<int> reachTiles;
+		for (int i = 0; i < reachRaws.size(); i ++) {
+			reachTiles.insert(P::Raw2Tile(reachRaws[i]));
+		}
+		int dropTile = policy.getAction(output, std::vector<int>(reachTiles.begin(), reachTiles.end()));
+		auto dropTiles = innerState.getTiles(StealType::DropType, dropTile);
+
 		return G::GenReachMsg(dropTiles[0])
 				+ StateReturnType::SplitToken
 				+ G::GenDropMsg(dropTiles[0]);
 	} else {
+		//TODO: The corresponding action = 41
 		logger->debug("Decide not to reach");
 //		innerState.addTile(raw); //Added
 		//TODO: Check if state deals with drop
@@ -354,9 +543,13 @@ std::string NetProxy<NetType>::processPongKanInd(int fromWho, int raw) {
 //	return processPongInd(fromWho, raw);
 	innerState.dropTile(fromWho, raw);
 
-	auto input = innerState.getState(StealType::PonKanType);
-	auto output = net->forward(input);
+	//zf: netForward
+//	auto input = innerState.getState(StealType::PonKanType);
+//	auto output = net->forward(input);
+	torch::Tensor output = updateNet(StealType::PonKanType);
+
 	auto action = policy.getAction(output, innerState.getCandidates(StealType::PonKanType, raw)); //TODO: What's candidate?
+	updateLabelStore(action); //TODO: For rl
 	logger->debug("Get action for pongkan indicator {}", action);
 
 	if (action == PongAction) {
@@ -374,9 +567,13 @@ template <class NetType>
 std::string NetProxy<NetType>::processPongChowInd(int fromWho, int raw) {
 	innerState.dropTile(fromWho, raw);
 
-	auto input = innerState.getState(StealType::ChowType);
-	auto output = net->forward(input);
+	//zf: netForward
+//	auto input = innerState.getState(StealType::ChowType);
+//	auto output = net->forward(input);
+	torch::Tensor output = updateNet(StealType::ChowType);
+
 	auto action = policy.getAction(output, innerState.getCandidates(StealType::PonChowType, raw));
+	updateLabelStore(action); //TODO: For rl
 	logger->debug("Get action for pongchowkan indicator {}", action);
 
 	if (action == ChowAction) {

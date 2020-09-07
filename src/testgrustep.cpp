@@ -129,9 +129,9 @@ static std::pair<float, float> validLstmOverfitWithPlot(std::vector<Tensor>& inp
 		for (auto stepInput: stepInputs) {
 //			stepInput = stepInput.view({batchSize, 1, 5 * 72});
 			//{batchSize, 42}
-			Tensor stepOutput = net.forward({stepInput}, false);
+			auto stepOutput = net.forward({stepInput}, false);
 //			stepOutput = torch::softmax(stepOutput, 2);
-			stepOutputs.push_back(stepOutput);
+			stepOutputs.push_back(stepOutput[0]);
 		}
 		//{batchSize * seqLen, 42}
 		Tensor loopOutput = torch::cat(stepOutputs, 1);
@@ -228,11 +228,11 @@ static void trainLstmDbOverfit(LmdbSceneReader<DbDefs>& reader, NetType& net,
 
 			for (auto stepInput: netInputs) {
 //				stepInput = stepInput.view({batchSize, 1, 5 * 72});
-				Tensor output = net.forward({stepInput}, true);
+				auto output = net.forward({stepInput}, true);
 //				output = torch::softmax(output, 2);
 				//{batch, 1, 42}
-				cout << "Output sizes: " << output.sizes() << endl;
-				outputs.push_back(output);
+				cout << "Output sizes: " << output[0].sizes() << endl;
+				outputs.push_back(output[0]);
 			}
 
 			Tensor output = torch::cat(outputs, 1);

@@ -506,7 +506,8 @@ bool asiotenhoufsm::start() {
 		sock.connect(serverP);
 		logger->info("Connected to {}, {}", ServerIp, ServerPort);
 
-		send (G::GenHeloMsg("NoName"));
+//		send (G::GenHeloMsg("NoName"));
+		send (G::GenHeloMsg("testrl0"));
 		RegRcv(heloState);
 	} catch (std::exception& e) {
 		logger->error("Failed to start connection: {}", e.what());

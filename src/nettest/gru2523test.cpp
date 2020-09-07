@@ -47,11 +47,11 @@ void testStep() {
 	Tensor input = torch::rand({1, 1, 360});
 //	Tensor state = torch::zeros({1, 1, 1024});
 
-	Tensor output = net.forward({input});
+	vector<Tensor> output = net.forward({input});
 
-	std::cout << output.sizes() << std::endl;
+	std::cout << output[0].sizes() << std::endl;
 
-	std::cout << output << std::endl;
+	std::cout << output[0] << std::endl;
 }
 
 int main() {

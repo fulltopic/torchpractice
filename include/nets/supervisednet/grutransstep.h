@@ -35,8 +35,8 @@ struct GRUTransStepNet: torch::nn::Module {
 //	torch::Tensor forward(std::vector<torch::Tensor> inputs, bool testLen);
 //	torch::Tensor forward(std::vector<torch::Tensor> inputs, const int SeqLen);
 	void reset();
-	torch::Tensor forward(std::vector<torch::Tensor> inputs, bool isBatch);
-	torch::Tensor forward(std::vector<torch::Tensor> inputs);
+	std::vector<torch::Tensor> forward(std::vector<torch::Tensor> inputs, bool isBatch);
+	std::vector<torch::Tensor> forward(std::vector<torch::Tensor> inputs);
 	torch::Tensor inputPreprocess(torch::Tensor);
 	void initParams();
 	void loadParams(const std::string modelPath);
@@ -44,8 +44,8 @@ struct GRUTransStepNet: torch::nn::Module {
 	static const std::string GetName();
 
 private:
-	torch::Tensor forwardBatch(std::vector<torch::Tensor>& inputs);
-	torch::Tensor forwardStep(std::vector<torch::Tensor>& inputs);
+	std::vector<torch::Tensor> forwardBatch(std::vector<torch::Tensor>& inputs);
+	std::vector<torch::Tensor> forwardStep(std::vector<torch::Tensor>& inputs);
 
 //	Tensor forward (Tensor input)
 };

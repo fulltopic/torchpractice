@@ -17,7 +17,9 @@
 #include <torch/torch.h>
 #include <iostream>
 
-using DataType = std::pair<std::vector<torch::Tensor>, std::vector<torch::Tensor>>;
+namespace {
+using DBDataType = std::pair<std::vector<torch::Tensor>, std::vector<torch::Tensor>>;
+}
 
 template<typename DataDefs>
 class ReaderWrapper {
@@ -88,7 +90,7 @@ ReaderWrapper<DataDefs>::ReaderWrapper(std::string path, const int bSize, const 
 //	rC.notify_all();
 //}
 template<typename DataDefs>
-DataType ReaderWrapper<DataDefs>::getValidSet(const int startPos, const int num) {
+DBDataType ReaderWrapper<DataDefs>::getValidSet(const int startPos, const int num) {
 	int pos = 0;
 	reader.reset();
 	while (reader.hasNext() && pos < startPos) {

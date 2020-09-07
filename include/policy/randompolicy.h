@@ -20,7 +20,7 @@ private:
 
 public:
 	RandomPolicy(float rate);
-	virtual ~RandomPolicy() = default;
+	virtual ~RandomPolicy();
 
 	virtual int getAction(torch::Tensor values, std::vector<int> candidates);
 	virtual int getAction(torch::Tensor values, std::vector<int> candidates, std::vector<int> excludes);
