@@ -226,5 +226,33 @@ void GRUMaskNet::reset() {
 
 }
 
+Tensor GRUMaskNet::getLoss(std::vector<torch::Tensor> inputTensors){
+	Tensor inputs = inputTensors[0];
+	Tensor actions = inputTensors[1];
+	Tensor actReturn = inputTensors[2];
+
+	vector<Tensor> output = forward({inputs}, true);
+	Tensor actionOutput = output[1]; //TODO: Check index of output, 1 -> action, 0 -> value?
+	Tensor valueOutput = output[0];
+
+	Tensor adv = actReturn - valueOutput;
+	Tensor valueLoss = 0.5 * adv.pow(2).mean();
+
+	Tensor actionLogProbs = torch::log_softmax(actionOutput, -1); //TODO: actionOutput is of fc output
+	Tensor actionProbs = torch::softmax(actionOutput, -1);
+	actionProbs = actionProbs.clamp(1.21e-7, 1.0f - 1.21e-7);
+	Tensor entropy = -(actionLogProbs * actionProbs).sum(-1).mean();
+
+	Tensor actPi = actionLogProbs.gather(-1, actions);
+	Tensor actionLoss = -(actPi * adv.detach()).mean();
+
+	cout << "valueLoss: " << valueLoss.item<float>() << endl;
+	cout << "actionLoss: " << actionLoss.item<float>() << endl;
+	cout << "entropy: " << entropy.item<float>() << endl;
+	cout << "-----------------------------------------> " << endl;
+
+	Tensor loss = valueLoss + actionLoss - entropy * 1e-4;
+
+	return loss;
 }
 

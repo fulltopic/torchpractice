@@ -13,6 +13,8 @@ private:
 	torch::nn::BatchNorm1d batchNorm0;
 	torch::nn::Linear fc;
 
+	torch::nn::Linear valueFc;
+
 	const int seqLen;
 
 	std::vector<torch::nn::BatchNorm1d> stepBatchNorms;
@@ -35,6 +37,8 @@ public:
 	std::vector<torch::Tensor> forward (std::vector<torch::Tensor> inputs);
 	torch::Tensor createHState();
 	void reset();
+
+	torch::Tensor getLoss(std::vector<torch::Tensor> inputTensors);
 
 };
 }
