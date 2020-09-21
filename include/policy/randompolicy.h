@@ -10,8 +10,9 @@
 
 #include <torch/torch.h>
 #include <vector>
+
+#include "../utils/logger.h"
 #include "policy/tenhoupolicy.h"
-#include "tenhouclient/logger.h"
 
 class RandomPolicy: public TenhouPolicy {
 private:

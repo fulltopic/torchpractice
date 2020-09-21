@@ -12,14 +12,29 @@
 #include <string>
 
 namespace rltest {
+enum StorageIndex {
+	InputIndex = 0,
+	HStateIndex = 1,
+	LabelIndex = 2,
+	ActionIndex = 3,
+	RewardIndex = 4,
+};
+
 class RlSetting {
-	const int ProxyNum;
-	const int BatchSize;
-	const int UpdateThreshold;
+public:
+	static const int ProxyNum;
+	static const int BatchSize;
+	static const int UpdateThreshold;
+	static const float ReturnGamma;
 
-	const int NetNum;
+	static const int RnnSeqLen = 27;
 
-	const std::vector<const std::string> Names;
+	static const int NetNum;
+
+	static std::vector<std::string> Names;
+
+	static const std::string ServerIp;
+	static const int ServerPort;
 };
 }
 

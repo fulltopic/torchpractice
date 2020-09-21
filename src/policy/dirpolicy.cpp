@@ -19,12 +19,12 @@
 #include <torch/torch.h>
 
 #include "tenhouclient/tenhoumsgparser.h"
-#include "tenhouclient/logger.h"
 #include "tenhouclient/tenhoustate.h"
 
 #include <boost/algorithm/string.hpp>
 #include <boost/filesystem.hpp>
 #include <boost/filesystem/path.hpp>
+#include "../../include/utils/logger.h"
 
 using namespace std;
 using namespace torch;

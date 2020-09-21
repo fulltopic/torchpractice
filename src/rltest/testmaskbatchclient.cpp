@@ -23,6 +23,7 @@
 
 #include "rltest/maskbatchnet.h"
 #include "rltest/l2net.h"
+#include "rltest/rltestsetting.h"
 
 #include "policy/randompolicy.h"
 #include "tenhouclient/netproxy.hpp"
@@ -47,7 +48,8 @@ const std::string batchModelPath = "/home/zf/workspaces/workspace_cpp/aws/GRUMas
 const std::string l2ModelPath = "/home/zf/workspaces/workspace_cpp/aws/GRU2L2048MaskNet_140000_0.002000_1593719779.pt";
 const int seqLen = 27;
 const int batchSize = 128;
-const std::string name = "ID5F706D6D-2WBML2Pe";
+//const std::string name = "ID5F706D6D-2WBML2Pe"; //testrl0
+const std::string name = "ID715C4B99-dSNcQnGe"; //testrl02
 }
 
 static void testBatchnorm(const std::string modelPath) {
@@ -56,10 +58,12 @@ static void testBatchnorm(const std::string modelPath) {
 
 	auto netPtr = std::shared_ptr<rltest::GRUMaskNet>(new rltest::GRUMaskNet(seqLen));
 	netPtr->loadModel(modelPath);
-	NetProxy<rltest::GRUMaskNet> netProxy(netPtr, innState, policy);
+	auto netProxy = std::shared_ptr<NetProxy<rltest::GRUMaskNet>>(
+			new NetProxy<rltest::GRUMaskNet>(rltest::RlSetting::Names[0], netPtr, innState, policy));
 	boost::asio::io_context io;
 
-	auto pointer = asiotenhoufsm<rltest::GRUMaskNet>::Create(io, netProxy, name);
+	auto pointer = asiotenhoufsm<rltest::GRUMaskNet>::Create(io, netProxy,
+			rltest::RlSetting::ServerIp, rltest::RlSetting::ServerPort, name);
 	pointer->start();
 
 	io.run();
@@ -71,16 +75,18 @@ static void testL2(const std::string modelPath) {
 
 	auto netPtr = std::shared_ptr<rltest::GRUL2Net>(new rltest::GRUL2Net(seqLen));
 	netPtr->loadModel(modelPath);
-	NetProxy<rltest::GRUL2Net> netProxy(netPtr, innState, policy);
+	auto netProxy = std::shared_ptr<NetProxy<rltest::GRUL2Net>>(
+			new NetProxy<rltest::GRUL2Net>(rltest::RlSetting::Names[0], netPtr, innState, policy));
 	boost::asio::io_context io;
 
-	auto pointer = asiotenhoufsm<rltest::GRUL2Net>::Create(io, netProxy, name);
+	auto pointer = asiotenhoufsm<rltest::GRUL2Net>::Create(io, netProxy,
+			rltest::RlSetting::ServerIp, rltest::RlSetting::ServerPort, name);
 	pointer->start();
 
 	io.run();
 }
 
 int main(int argc, char** argv) {
-	testBatchnorm(batchModelPath);
-//	testL2(l2ModelPath);
+//	testBatchnorm(batchModelPath);
+	testL2(l2ModelPath);
 }

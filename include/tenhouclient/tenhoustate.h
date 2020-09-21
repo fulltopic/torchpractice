@@ -12,8 +12,8 @@
 #include <vector>
 #include <set>
 
+#include "../utils/logger.h"
 #include "tenhouclient/tenhouconsts.h"
-#include "tenhouclient/logger.h"
 
 class TenhouState {
 public:
@@ -59,6 +59,7 @@ enum LstmStateAction {
 	NOOPAction = RonAction + 1, //41
 };
 
+//TODO: Add a furiten state
 enum LstmStatePos {
 	ReachPos = TenhouConsts::TileNum * 2,
 	OyaPos = ReachPos + 1,
@@ -76,16 +77,11 @@ enum LstmStatePos {
 	NOOPPos = RonPos + 1,
 };
 
-//TODO: state for lstm step
 class BaseState: public TenhouState {
 protected:
 
 	std::vector<bool> myTiles;
 	torch::Tensor innerState;
-
-	//TODO: Define tensor size as const static
-//	torch::Tensor lstmH;
-//	torch::Tensor lstmS;
 
 //	const int seqLen;
 	const int w;

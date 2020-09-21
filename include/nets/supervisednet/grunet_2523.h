@@ -14,7 +14,7 @@
 #include <iostream>
 #include <string>
 
-#include "tenhouclient/logger.h"
+#include "../../utils/logger.h"
 
 class GruNet_2523: torch::nn::Module {
 public:

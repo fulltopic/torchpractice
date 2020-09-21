@@ -42,6 +42,7 @@ add_subdirectory(src/tenhouclient)
 add_subdirectory(src/policy)
 add_subdirectory(src/gymtest)
 add_subdirectory(src/rltest)
+add_subdirectory(src/utils)
 
 link_directories(${CAFFE2_LIB_PATH})
 
@@ -131,47 +132,47 @@ target_compile_features(testdebug PUBLIC cxx_range_for)
 target_link_libraries(testdebug ${shared_libs})
 
 ########################################################## TEST ####################################################
-add_executable(parsertest src/tenhouclienttest/testparser.cpp  $<TARGET_OBJECTS:tenhouclient> $<TARGET_OBJECTS:policy> $<TARGET_OBJECTS:nets>)
+add_executable(parsertest src/tenhouclienttest/testparser.cpp  $<TARGET_OBJECTS:tenhouclient> $<TARGET_OBJECTS:policy> $<TARGET_OBJECTS:nets> $<TARGET_OBJECTS:utils>)
 target_compile_features(parsertest PUBLIC cxx_range_for)
 target_link_libraries(parsertest ${shared_libs} ${static_libs})
 
-add_executable(testtensor src/tenhouclienttest/testtensor.cpp  $<TARGET_OBJECTS:tenhouclient> $<TARGET_OBJECTS:policy> $<TARGET_OBJECTS:nets>)
+add_executable(testtensor src/tenhouclienttest/testtensor.cpp  $<TARGET_OBJECTS:tenhouclient> $<TARGET_OBJECTS:policy> $<TARGET_OBJECTS:nets> $<TARGET_OBJECTS:utils>)
 target_compile_features(testtensor PUBLIC cxx_range_for)
 target_link_libraries(testtensor ${shared_libs} ${static_libs})
 
-add_executable(gentest src/tenhouclienttest/testgenerator.cpp  $<TARGET_OBJECTS:tenhouclient> $<TARGET_OBJECTS:policy> $<TARGET_OBJECTS:nets>)
+add_executable(gentest src/tenhouclienttest/testgenerator.cpp  $<TARGET_OBJECTS:tenhouclient> $<TARGET_OBJECTS:policy> $<TARGET_OBJECTS:nets> $<TARGET_OBJECTS:utils>)
 target_compile_features(gentest PUBLIC cxx_range_for)
 target_link_libraries(gentest ${shared_libs} ${static_libs})
 
-add_executable(fileserver src/tenhouclienttest/testfileserver.cpp  $<TARGET_OBJECTS:tenhouclient> $<TARGET_OBJECTS:policy> $<TARGET_OBJECTS:nets>)
+add_executable(fileserver src/tenhouclienttest/testfileserver.cpp  $<TARGET_OBJECTS:tenhouclient> $<TARGET_OBJECTS:policy> $<TARGET_OBJECTS:nets> $<TARGET_OBJECTS:utils>)
 target_compile_features(fileserver PUBLIC cxx_range_for)
 target_link_libraries(fileserver ${shared_libs} ${static_libs})
 
-#add_executable(loggertest src/tenhouclienttest/testlogger.cpp  $<TARGET_OBJECTS:tenhouclient> $<TARGET_OBJECTS:policy>)
+#add_executable(loggertest src/tenhouclienttest/testlogger.cpp  $<TARGET_OBJECTS:tenhouclient> $<TARGET_OBJECTS:policy> $<TARGET_OBJECTS:utils>)
 #target_compile_features(loggertest PUBLIC cxx_range_for)
 #target_link_libraries(loggertest ${shared_libs} ${static_libs})
 
-add_executable(clienttest src/tenhouclienttest/tenhouclient.cpp  $<TARGET_OBJECTS:tenhouclient> $<TARGET_OBJECTS:policy> $<TARGET_OBJECTS:nets>)
+add_executable(clienttest src/tenhouclienttest/tenhouclient.cpp  $<TARGET_OBJECTS:tenhouclient> $<TARGET_OBJECTS:policy> $<TARGET_OBJECTS:nets> $<TARGET_OBJECTS:utils>)
 target_compile_features(clienttest PUBLIC cxx_range_for)
 target_link_libraries(clienttest ${shared_libs} ${static_libs})
 
-add_executable(dirserver src/tenhouclienttest/testdirserver.cpp  $<TARGET_OBJECTS:tenhouclient> $<TARGET_OBJECTS:policy> $<TARGET_OBJECTS:nets>)
+add_executable(dirserver src/tenhouclienttest/testdirserver.cpp  $<TARGET_OBJECTS:tenhouclient> $<TARGET_OBJECTS:policy> $<TARGET_OBJECTS:nets> $<TARGET_OBJECTS:utils>)
 target_compile_features(dirserver PUBLIC cxx_range_for)
 target_link_libraries(dirserver ${shared_libs} ${static_libs})
 
-add_executable(dirclient src/tenhouclienttest/testdirclient.cpp  $<TARGET_OBJECTS:tenhouclient> $<TARGET_OBJECTS:policy> $<TARGET_OBJECTS:nets>)
+add_executable(dirclient src/tenhouclienttest/testdirclient.cpp  $<TARGET_OBJECTS:tenhouclient> $<TARGET_OBJECTS:policy> $<TARGET_OBJECTS:nets> $<TARGET_OBJECTS:utils>)
 target_compile_features(dirclient PUBLIC cxx_range_for)
 target_link_libraries(dirclient ${shared_libs} ${static_libs})
 
-add_executable(asioclient src/tenhouclienttest/testasioclient.cpp  $<TARGET_OBJECTS:tenhouclient> $<TARGET_OBJECTS:policy> $<TARGET_OBJECTS:nets> $<TARGET_OBJECTS:supervisednet>)
+add_executable(asioclient src/tenhouclienttest/testasioclient.cpp  $<TARGET_OBJECTS:tenhouclient> $<TARGET_OBJECTS:policy> $<TARGET_OBJECTS:nets> $<TARGET_OBJECTS:supervisednet> $<TARGET_OBJECTS:utils>)
 target_compile_features(asioclient PUBLIC cxx_range_for)
 target_link_libraries(asioclient ${shared_libs} ${static_libs})
 
-add_executable(asiodirclient src/tenhouclienttest/testdirasioclient.cpp  $<TARGET_OBJECTS:tenhouclient> $<TARGET_OBJECTS:policy> $<TARGET_OBJECTS:nets>)
+add_executable(asiodirclient src/tenhouclienttest/testdirasioclient.cpp  $<TARGET_OBJECTS:tenhouclient> $<TARGET_OBJECTS:policy> $<TARGET_OBJECTS:nets> $<TARGET_OBJECTS:utils>)
 target_compile_features(asiodirclient PUBLIC cxx_range_for)
 target_link_libraries(asiodirclient ${shared_libs} ${static_libs})
 
-add_executable(testmjclient src/tenhouclienttest/testmjclient.cpp  $<TARGET_OBJECTS:tenhouclient> $<TARGET_OBJECTS:policy> $<TARGET_OBJECTS:nets> $<TARGET_OBJECTS:supervisednet>)
+add_executable(testmjclient src/tenhouclienttest/testmjclient.cpp  $<TARGET_OBJECTS:tenhouclient> $<TARGET_OBJECTS:policy> $<TARGET_OBJECTS:nets> $<TARGET_OBJECTS:supervisednet> $<TARGET_OBJECTS:utils>)
 target_compile_features(testmjclient PUBLIC cxx_range_for)
 target_link_libraries(testmjclient ${shared_libs} ${static_libs})
 
@@ -223,19 +224,27 @@ target_compile_features(lunalstm6 PUBLIC cxx_range_for)
 target_link_libraries(lunalstm6 ${shared_libs} ${static_libs} ${pytorch_cpp_rl_lib})
 
 ######################################### RL test ######################################################
-add_executable(rll2transfertest src/rltest/loadl2modeltest.cpp $<TARGET_OBJECTS:lmdbtools> $<TARGET_OBJECTS:nets> $<TARGET_OBJECTS:pytools>)
+add_executable(rll2transfertest src/rltest/loadl2modeltest.cpp $<TARGET_OBJECTS:lmdbtools> $<TARGET_OBJECTS:nets> $<TARGET_OBJECTS:rltest> $<TARGET_OBJECTS:pytools> $<TARGET_OBJECTS:utils>)
 target_compile_features(rll2transfertest PUBLIC cxx_range_for)
 target_link_libraries(rll2transfertest ${shared_libs} ${static_libs})
 
 
-add_executable(rlbatchtransfertest src/rltest/loadmaskbatchmodeltest.cpp $<TARGET_OBJECTS:lmdbtools> $<TARGET_OBJECTS:nets> $<TARGET_OBJECTS:pytools>)
+add_executable(rlbatchtransfertest src/rltest/loadmaskbatchmodeltest.cpp $<TARGET_OBJECTS:lmdbtools> $<TARGET_OBJECTS:nets> $<TARGET_OBJECTS:pytools> $<TARGET_OBJECTS:utils>)
 target_compile_features(rlbatchtransfertest PUBLIC cxx_range_for)
 target_link_libraries(rlbatchtransfertest ${shared_libs} ${static_libs})
 
-add_executable(testmaskbatchnet src/rltest/testmaskbatchnet.cpp $<TARGET_OBJECTS:lmdbtools> $<TARGET_OBJECTS:nets> $<TARGET_OBJECTS:pytools> $<TARGET_OBJECTS:rltest>)
+add_executable(testmaskbatchnet src/rltest/testmaskbatchnet.cpp $<TARGET_OBJECTS:lmdbtools> $<TARGET_OBJECTS:nets> $<TARGET_OBJECTS:pytools> $<TARGET_OBJECTS:rltest> $<TARGET_OBJECTS:utils>)
 target_compile_features(testmaskbatchnet PUBLIC cxx_range_for)
 target_link_libraries(testmaskbatchnet ${shared_libs} ${static_libs})
 
-add_executable(testmaskbatchclient src/rltest/testmaskbatchclient.cpp $<TARGET_OBJECTS:lmdbtools> $<TARGET_OBJECTS:nets> $<TARGET_OBJECTS:rltest> $<TARGET_OBJECTS:tenhouclient> $<TARGET_OBJECTS:policy> $<TARGET_OBJECTS:pytools>)
+add_executable(testmaskbatchclient src/rltest/testmaskbatchclient.cpp $<TARGET_OBJECTS:lmdbtools> $<TARGET_OBJECTS:nets> $<TARGET_OBJECTS:rltest> $<TARGET_OBJECTS:tenhouclient> $<TARGET_OBJECTS:policy> $<TARGET_OBJECTS:pytools> $<TARGET_OBJECTS:utils>)
 target_compile_features(testmaskbatchclient PUBLIC cxx_range_for)
 target_link_libraries(testmaskbatchclient ${shared_libs} ${static_libs})
+
+add_executable(testworker src/rltest/testtrainworker.cpp $<TARGET_OBJECTS:lmdbtools> $<TARGET_OBJECTS:nets> $<TARGET_OBJECTS:rltest> $<TARGET_OBJECTS:tenhouclient> $<TARGET_OBJECTS:policy> $<TARGET_OBJECTS:pytools> $<TARGET_OBJECTS:utils>)
+target_compile_features(testworker PUBLIC cxx_range_for)
+target_link_libraries(testworker ${shared_libs} ${static_libs})
+
+add_executable(testtool src/rltest/testtool.cpp $<TARGET_OBJECTS:lmdbtools> $<TARGET_OBJECTS:nets> $<TARGET_OBJECTS:rltest> $<TARGET_OBJECTS:tenhouclient> $<TARGET_OBJECTS:policy> $<TARGET_OBJECTS:pytools> $<TARGET_OBJECTS:utils>)
+target_compile_features(testtool PUBLIC cxx_range_for)
+target_link_libraries(testtool ${shared_libs} ${static_libs})

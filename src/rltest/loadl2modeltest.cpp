@@ -31,6 +31,8 @@
 #include "lmdbtools/LmdbDataDefs.h"
 #include "lmdbtools/Lmdb2RowDataDefs.h"
 
+#include "rltest/l2net.h"
+
 
 
 using Tensor = torch::Tensor;
@@ -126,7 +128,7 @@ public:
 
 	GRUMaskNet(int inSeqLen):
 		gru0(torch::nn::GRUOptions(360, 2048).num_layers(2).batch_first(true)),
-		fc(2048, 1),
+		fc(2048, 42),
 		seqLen(inSeqLen)
 	{
 		register_module("gru0", gru0);
@@ -356,15 +358,18 @@ static void evalModel(GRUMaskNet& net, LmdbSceneReader<LmdbDataDefs>& validReade
 
 }
 
-static void evalStepModel(GRUMaskNet& net, LmdbSceneReader<LmdbDataDefs>& validReader, const int sampleNum) {
+template<typename NetType>
+static void evalStepModel(NetType& net, LmdbSceneReader<LmdbDataDefs>& validReader, const int sampleNum) {
 	validReader.reset();
 	vector<Tensor> validInputs;
 	vector<Tensor> validLabels;
 	std::tie(validInputs, validLabels) = validReader.next(sampleNum);
 
-	Tensor input = validInputs[0];
-	Tensor label = validLabels[0];
+	Tensor input = validInputs[2];
+	Tensor label = validLabels[2];
 	processActionInput(input, label);
+	//TODO: Where to put div(4)
+	input = input.div(4);
 
 	net.eval();
 	const int seqLen = input.size(0);
@@ -376,9 +381,10 @@ static void evalStepModel(GRUMaskNet& net, LmdbSceneReader<LmdbDataDefs>& validR
 	Tensor hState = torch::zeros({2, 1, 2048});
 	for (int i = 0; i < seqLen; i ++) {
 		Tensor netInput = input[i].view({1, 1, 360});
-		auto output = net.forward(netInput, hState);
-		hState = std::get<1>(output);
-		outputs.push_back(std::get<0>(output).view({1, 42}));
+		auto output = net.forward({netInput, hState, torch::tensor(i)});
+		hState = output[1];
+		cout << "step output sizes: " << output[0].sizes() << endl;
+		outputs.push_back(output[0].view({1, 42}));
 	}
 
 	cout << "output sizes " << outputs[0].sizes() << endl;
@@ -398,8 +404,21 @@ static void testTrain(int sampleNum, int seqLen) {
 	net.loadModel(modelPath);
 	cout << "Model loaded " << endl;
 
-	evalModel(net, validReader, sampleNum, seqLen);
-//	evalStepModel(net, validReader, sampleNum);
+//	evalModel(net, validReader, sampleNum, seqLen);
+	evalStepModel(net, validReader, sampleNum);
+}
+
+static void testL2NetTrain(int sampleNum, int seqLen) {
+	std::string validDbPath = wsPath + "/workspaces/res/dbs/lmdb5rowscenetestvalid";
+	cout << "validDbPath: " << validDbPath << endl;
+	LmdbSceneReader<LmdbDataDefs> validReader(validDbPath);
+
+	rltest::GRUL2Net net(seqLen);
+	net.loadModel(modelPath);
+	cout << "Model loaded " << endl;
+
+//	evalModel(net, validReader, sampleNum, seqLen);
+	evalStepModel(net, validReader, sampleNum);
 }
 
 
@@ -441,8 +460,9 @@ int main(int argc, char** argv) {
 	const int sampleNum = atoi(argv[1]);
 	const int seqLen = 27;
 
-	testTrain(sampleNum, seqLen);
+//	testTrain(sampleNum, seqLen);
 
+	testL2NetTrain(sampleNum, seqLen);
 //	testPack();
 }
 

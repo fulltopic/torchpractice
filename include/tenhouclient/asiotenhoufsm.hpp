@@ -16,7 +16,6 @@
 #include <boost/enable_shared_from_this.hpp>
 
 //#include "tenhoufsm.h"
-#include "logger.h"
 #include "netproxy.hpp"
 #include "nets/grustep.h"
 
@@ -31,6 +30,7 @@
 #include <boost/enable_shared_from_this.hpp>
 #include <boost/algorithm/string.hpp>
 
+#include "../utils/logger.h"
 #include "tenhouclient/tenhoumsggenerator.h"
 #include "tenhouclient/tenhoumsgparser.h"
 #include "tenhouclient/tenhoumsgutils.h"
@@ -50,10 +50,12 @@ public:
 
 	typedef boost::shared_ptr<asiotenhoufsm<NetType>> pointer;
 //	static pointer Create (boost::asio::io_context& io, NetProxy<RandomNet>& net);
-	static pointer Create (boost::asio::io_context& io, NetProxy<NetType>& net, const std::string tenhouName);
+	static pointer Create (boost::asio::io_context& io, std::shared_ptr<NetProxy<NetType>> net,
+			const std::string serverIp, const int serverPort, const std::string tenhouName);
 
 	bool start();
 	void reset();
+	//TODO: Add close state
 
 	~asiotenhoufsm();
 
@@ -64,7 +66,7 @@ private:
 	boost::array<char, 512> rcvBuf;
 
 //	NetProxy<RandomNet>& net;
-	NetProxy<NetType> net;
+	std::shared_ptr<NetProxy<NetType>> net;
 	std::shared_ptr<spdlog::logger> logger;
 
 	boost::asio::deadline_timer gameEnd2NextTimer;
@@ -77,7 +79,8 @@ private:
 	int lnCount;
 
 //	asiotenhoufsm(boost::asio::io_context& iio, NetProxy<RandomNet>& iNet);
-	asiotenhoufsm(boost::asio::io_context& iio, NetProxy<NetType>& iNet, const std::string tenhouName);
+	asiotenhoufsm(boost::asio::io_context& iio, std::shared_ptr<NetProxy<NetType>> iNet,
+			const std::string ServerIp, const int serverPort, const std::string tenhouName);
 
 	void send (std::string msg);
 //	void handleSnd (StateType nextType, boost::system::error_code& e);
@@ -116,6 +119,7 @@ using U=TenhouMsgUtils;
 using S=std::string;
 using ErrorCode=boost::system::error_code;
 
+//TODO: Move into setting?
 template<class NetType>
 const int asiotenhoufsm<NetType>::GameEnd2NextTimeout = 2;
 template<class NetType>
@@ -133,8 +137,8 @@ const int asiotenhoufsm<NetType>::ReConnTimeout = 15;
 //static const std::string ServerIp = "127.0.0.1";
 //static const int ServerPort = 26238;
 
-static const std::string ServerIp = "133.242.10.78";
-static const int ServerPort = 10080;
+//static const std::string ServerIp = "133.242.10.78";
+//static const int ServerPort = 10080;
 //static const std::string ServerIp = "127.0.0.1";
 //static const int ServerPort = 26238;
 
@@ -147,10 +151,11 @@ boost::bind(&asiotenhoufsm::handle, this->shared_from_this(),	\
 );
 
 template<class NetType>
-asiotenhoufsm<NetType>::asiotenhoufsm(boost::asio::io_context& iio, NetProxy<NetType>& iNet, const std::string tenhouName)
+asiotenhoufsm<NetType>::asiotenhoufsm(boost::asio::io_context& iio, std::shared_ptr<NetProxy<NetType>> iNet,
+		const std::string serverIp, const int serverPort, const std::string tenhouName)
 	: name(tenhouName),
 	  resolver(iio),
-	  serverP(boost::asio::ip::address::from_string(ServerIp), ServerPort),
+	  serverP(boost::asio::ip::address::from_string(serverIp), serverPort),
 	  sock(iio),
 	  net(iNet),
 	  logger(Logger::GetLogger()),
@@ -170,8 +175,9 @@ asiotenhoufsm<NetType>::~asiotenhoufsm() {
 }
 
 template<class NetType>
-typename asiotenhoufsm<NetType>::pointer asiotenhoufsm<NetType>::Create(boost::asio::io_context& io, NetProxy<NetType>& net, const std::string tenhouName) {
-	return pointer(new asiotenhoufsm<NetType>(io, net, tenhouName));
+typename asiotenhoufsm<NetType>::pointer asiotenhoufsm<NetType>::Create(boost::asio::io_context& io, std::shared_ptr<NetProxy<NetType>> net,
+		const std::string serverIp, const int serverPort, const std::string tenhouName) {
+	return pointer(new asiotenhoufsm<NetType>(io, net, serverIp, serverPort, tenhouName));
 }
 
 template<class NetType>
@@ -272,6 +278,7 @@ void asiotenhoufsm<NetType>::heloState(const boost::system::error_code& e, std::
 //							boost::asio::placeholders::bytes_transferred())
 //			);
 		} else if (msg.find("GO") != S::npos) {
+			logger->info("log file: {}", msg);
 			//TODO: It is reconnect
 			send(G::GenGoMsg());
 			send(G::GenNextReadyMsg());
@@ -300,6 +307,7 @@ void asiotenhoufsm<NetType>::authState(const ErrorCode &e, std::size_t len) {
 		} else if (msg.find("RANKING") != S::npos) {
 			RegRcv(authState);
 		} else if (msg.find("GO") != S::npos) {
+			logger->info("Reinit msg: {}", msg);
 			//TODO: It is reconnect
 			send(G::GenGoMsg());
 			send(G::GenNextReadyMsg());
@@ -331,6 +339,10 @@ void asiotenhoufsm<NetType>::joinState(const ErrorCode &e, std::size_t len) {
 		bool toReset = false;
 		auto msgs = splitRcvMsg(msg);
 		for (int i = 0; i < msgs.size(); i ++) {
+			if (msgs[i].find("dan") != S::npos) {
+				logger->info("Log file: {}", msgs[i]);
+			}
+
 			if (msgs[i].find("GO") != S::npos) {
 				send(G::GenGoMsg());
 				send(G::GenNextReadyMsg());
@@ -572,6 +584,7 @@ void asiotenhoufsm<NetType>::sceneEndState(const ErrorCode &e, std::size_t len) 
 	}
 }
 
+//TODO: Maybe gameend is better than scene end for detecting update
 template<class NetType>
 void asiotenhoufsm<NetType>::sceneEnd2StartTimerHandle(const ErrorCode &e) {
 	logger->info("sceneEnd2StartTimer e = {}: {} ",e.value(), e.message());
@@ -579,13 +592,33 @@ void asiotenhoufsm<NetType>::sceneEnd2StartTimerHandle(const ErrorCode &e) {
 		logger->warn("The sceneEnd2StartTimer had been cancelled ");
 	} else if (!e) {
 		logger->warn("sceneEnd2StartTimer expiring");
-		sock.cancel();
 
-		send(G::GenByeMsg());
-		sleep(5);
+		if (!net->isRunning()) {
+			if (net->setDetected()) {
+				sock.cancel();
 
-		send(G::GenHeloMsg(name));
-		RegRcv(heloState);
+				send(G::GenByeMsg());
+//				sleep(5);
+
+//				send(G::GenHeloMsg(name));
+//				RegRcv(heloState);
+			} else {
+				logger->info("Waiting for network updating");
+			}
+			sceneEnd2StartTimer.expires_from_now(boost::posix_time::seconds(SceneEnd2StartTimeout));
+			sceneEnd2StartTimer.async_wait(boost::bind(&asiotenhoufsm::sceneEnd2StartTimerHandle, this->shared_from_this(),
+					boost::asio::placeholders::error));
+
+		} else {
+			sock.cancel();
+
+			//Maybe an extra message
+			send(G::GenByeMsg());
+			sleep(5);
+
+			send(G::GenHeloMsg(name));
+			RegRcv(heloState);
+		}
 	} else {
 		logger->error("sceneEnd2StartTimer interrupted as: {}", e.message());
 	}
@@ -617,7 +650,7 @@ void asiotenhoufsm<NetType>::processGameMsg(S msg) {
 		boost::trim(subMsg);
 		logger->debug("To process msg {}", subMsg);
 
-		S rc = net.processMsg(subMsg);
+		S rc = net->processMsg(subMsg);
 		send(rc);
 
 		lastIndex = index + 1;
@@ -631,7 +664,7 @@ bool asiotenhoufsm<NetType>::start() {
 	try {
 		sock.open(tcp::v4());
 		sock.connect(serverP);
-		logger->info("Connected to {}, {}", ServerIp, ServerPort);
+		logger->info("Connected to {}, {}", serverP.address().to_string(), serverP.port());
 
 //		send (G::GenHeloMsg("NoName"));
 		send(G::GenHeloMsg(name));
@@ -660,7 +693,7 @@ void asiotenhoufsm<NetType>::reset() {
 	lnCount = 0;
 
 	sock.close();
-	net.reset();
+	net->reset();
 
 	start();
 }

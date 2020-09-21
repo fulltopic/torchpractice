@@ -13,13 +13,12 @@
 #include "tenhouclient/tenhoufsm.h"
 #include "tenhouclient/tenhoufsmstate.h"
 #include "tenhouclient/tenhoustate.h"
-#include "tenhouclient/logger.h"
-
 #include <boost/asio.hpp>
 #include <boost/thread/thread.hpp>
 #include <boost/bind/bind.hpp>
 #include <thread>
 
+#include "../../include/utils/logger.h"
 #include "tenhouclient/asiotenhoufsm.hpp"
 #include "tenhouclient/netproxy.hpp"
 #include "policy/dirpolicy.h"
@@ -38,10 +37,10 @@ void test(std::string path) {
 	logger->info("Policy initiated ");
 
 //	NetProxy<RandomNet> netProxy(std::shared_ptr<RandomNet>(new RandomNet()), innState, policy);
-	NetProxy<GRUStepNet> netProxy(std::shared_ptr<GRUStepNet>(new GRUStepNet()), innState, policy);
+	auto netProxy = std::shared_ptr<NetProxy<GRUStepNet>>(new NetProxy<GRUStepNet>("NoName", std::shared_ptr<GRUStepNet>(new GRUStepNet()), innState, policy));
 	boost::asio::io_context io;
 
-	auto pointer = asiotenhoufsm<GRUStepNet>::Create(io, netProxy, "NoName");
+	auto pointer = asiotenhoufsm<GRUStepNet>::Create(io, netProxy, "127.0.0.1", 26238, "NoName");
 	pointer->start();
 
 	io.run();

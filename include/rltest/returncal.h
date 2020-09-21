@@ -11,16 +11,15 @@
 #include <torch/torch.h>
 #include <vector>
 
+namespace rltest {
 class ReturnCalculator {
 public:
-	virtual std::vector<torch::Tensor> calReturn(const std::vector<torch::Tensor>& actions,
-			const std::vector<torch::Tensor>& labels,
-			float reward
+	virtual std::vector<torch::Tensor> calReturn(const std::vector<torch::Tensor>& datas
 			) = 0;
 
 	virtual ~ReturnCalculator();
 };
 
-
+}
 
 #endif /* INCLUDE_RLTEST_RETURNCAL_H_ */

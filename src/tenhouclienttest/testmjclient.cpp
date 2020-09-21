@@ -10,15 +10,14 @@
 #include "tenhouclient/tenhoufsm.h"
 #include "tenhouclient/tenhoufsmstate.h"
 #include "tenhouclient/tenhoustate.h"
-#include "tenhouclient/logger.h"
-
 #include <boost/asio.hpp>
 #include <boost/thread/thread.hpp>
 #include <boost/bind/bind.hpp>
 #include <thread>
 #include <memory>
 
-#include "../../include/tenhouclient/asiotenhoufsm.hpp"
+#include "../../include/utils/logger.h"
+#include "tenhouclient/asiotenhoufsm.hpp"
 #include "tenhouclient/netproxy.hpp"
 #include "policy/dirpolicy.h"
 #include "policy/filepolicy.h"
@@ -49,11 +48,11 @@ void test() {
 
 	auto netPtr = std::shared_ptr<GRUTransStepNet>(new GRUTransStepNet());
 	netPtr->loadParams(modelPath);
-	NetProxy<GRUTransStepNet> netProxy(netPtr, innState, policy);
+	auto netProxy = std::shared_ptr<NetProxy<GRUTransStepNet>>(new NetProxy<GRUTransStepNet>("NoName", netPtr, innState, policy));
 //	NetProxy<GRUStepNet> netProxy(std::shared_ptr<GRUStepNet>(new GRUStepNet()), innState, policy);
 	boost::asio::io_context io;
 
-	auto pointer = asiotenhoufsm<GRUTransStepNet>::Create(io, netProxy, "NoName");
+	auto pointer = asiotenhoufsm<GRUTransStepNet>::Create(io, netProxy, "127.0.0.1", 26238, "NoName");
 	pointer->start();
 
 	io.run();

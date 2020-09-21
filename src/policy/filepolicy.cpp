@@ -18,8 +18,8 @@
 
 #include <torch/torch.h>
 
+#include "../../include/utils/logger.h"
 #include "tenhouclient/tenhoumsgparser.h"
-#include "tenhouclient/logger.h"
 #include "tenhouclient/tenhoustate.h"
 
 using namespace std;

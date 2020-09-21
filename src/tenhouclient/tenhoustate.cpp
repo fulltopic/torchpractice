@@ -10,12 +10,11 @@
 #include "tenhouclient/tenhouconsts.h"
 
 #include "tenhouclient/tenhoumsgparser.h"
-#include "tenhouclient/logger.h"
-
 #include <set>
 #include <vector>
 #include <map>
 #include <torch/torch.h>
+#include "../../include/utils/logger.h"
 
 using namespace std;
 using namespace torch;

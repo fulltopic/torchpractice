@@ -39,7 +39,7 @@ using std::vector;
 GRUMaskNet::GRUMaskNet(int inSeqLen):
 	gru0(torch::nn::GRUOptions(360, 2048).num_layers(1).batch_first(true)),
 	batchNorm0(inSeqLen),
-	fc(2048, 1),
+	fc(2048, 42),
 	seqLen(inSeqLen)
 {
 	register_module("gru0", gru0);
@@ -225,34 +225,4 @@ Tensor GRUMaskNet::createHState() {
 void GRUMaskNet::reset() {
 
 }
-
-Tensor GRUMaskNet::getLoss(std::vector<torch::Tensor> inputTensors){
-	Tensor inputs = inputTensors[0];
-	Tensor actions = inputTensors[1];
-	Tensor actReturn = inputTensors[2];
-
-	vector<Tensor> output = forward({inputs}, true);
-	Tensor actionOutput = output[1]; //TODO: Check index of output, 1 -> action, 0 -> value?
-	Tensor valueOutput = output[0];
-
-	Tensor adv = actReturn - valueOutput;
-	Tensor valueLoss = 0.5 * adv.pow(2).mean();
-
-	Tensor actionLogProbs = torch::log_softmax(actionOutput, -1); //TODO: actionOutput is of fc output
-	Tensor actionProbs = torch::softmax(actionOutput, -1);
-	actionProbs = actionProbs.clamp(1.21e-7, 1.0f - 1.21e-7);
-	Tensor entropy = -(actionLogProbs * actionProbs).sum(-1).mean();
-
-	Tensor actPi = actionLogProbs.gather(-1, actions);
-	Tensor actionLoss = -(actPi * adv.detach()).mean();
-
-	cout << "valueLoss: " << valueLoss.item<float>() << endl;
-	cout << "actionLoss: " << actionLoss.item<float>() << endl;
-	cout << "entropy: " << entropy.item<float>() << endl;
-	cout << "-----------------------------------------> " << endl;
-
-	Tensor loss = valueLoss + actionLoss - entropy * 1e-4;
-
-	return loss;
 }
-

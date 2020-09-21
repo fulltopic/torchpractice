@@ -7,13 +7,14 @@
 
 
 #include "tenhouclient/tenhoufsmstate.h"
+
+#include "../../include/utils/logger.h"
 #include "tenhouclient/tenhoufsm.h"
 
 #include "tenhouclient/tenhoumsggenerator.h"
 #include "tenhouclient/tenhoumsgparser.h"
 #include "tenhouclient/tenhoumsgutils.h"
 
-#include "tenhouclient/logger.h"
 
 using namespace std;
 

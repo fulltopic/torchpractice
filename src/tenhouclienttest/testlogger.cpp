@@ -6,11 +6,11 @@
  */
 
 
-#include "tenhouclient/logger.h"
 #include "spdlog/spdlog-inl.h"
 #include "spdlog/common.h"
 #include <map>
 #include <string>
+#include "../../include/utils/logger.h"
 
 void test() {
 //	spdlog::set_pattern("[%D %H:%M:%S] [%t] [%@] %v", spdlog::pattern_time_type::local);

@@ -11,10 +11,9 @@
 #include "tenhouclient/tenhoufsm.h"
 #include "tenhouclient/tenhoufsmstate.h"
 #include "tenhouclient/tenhoustate.h"
-#include "tenhouclient/logger.h"
-
 #include <thread>
 
+#include "../../include/utils/logger.h"
 #include "policy/filepolicy.h"
 #include "policy/tenhoupolicy.h"
 #include "tenhouclient/netproxy.hpp"
@@ -38,7 +37,7 @@ static void test(string path) {
 	policy.init();
 	logger->info("Policy initiated ");
 
-	NetProxy<GRUStepNet> netProxy(std::shared_ptr<GRUStepNet>(new GRUStepNet()), innState, policy);
+	NetProxy<GRUStepNet> netProxy("NoName", std::shared_ptr<GRUStepNet>(new GRUStepNet()), innState, policy);
 	TenhouFsm fsm(netProxy);
 	logger->info("Fsm created ");
 

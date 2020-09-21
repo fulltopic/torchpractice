@@ -15,8 +15,8 @@
 #include <mutex>
 #include <condition_variable>
 
+#include "../utils/logger.h"
 #include "tenhouconn.h"
-#include "logger.h"
 #include "netproxy.hpp"
 #include "randomnet.h"
 #include "fsmtypes.h"

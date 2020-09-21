@@ -8,5 +8,6 @@
 
 #include "rltest/returncal.h"
 
+namespace rltest {
 ReturnCalculator::~ReturnCalculator() {}
-
+}

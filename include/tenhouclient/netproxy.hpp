@@ -10,15 +10,18 @@
 
 #include "tenhouconsts.h"
 #include "tenhoustate.h"
-#include "logger.h"
-
 #include "randomnet.h"
 
 #include <vector>
 #include <string>
-#include <memory>
+//#include <memory>
+#include <future>
+#include <condition_variable>
+#include <mutex>
 
 #include <torch/torch.h>
+
+#include "utils/logger.h"
 #include "policy/tenhoupolicy.h"
 
 #include "tenhouclient/tenhoumsgparser.h"
@@ -36,20 +39,15 @@ struct HasCreateHState {
 	static const bool Has = (sizeof(Test<T>(0)) == sizeof(char));
 };
 
-enum StorageIndex {
-	InputIndex = 0,
-	HStateIndex = 1,
-	LabelIndex = 2,
-	ActionIndex = 3,
-	RewardIndex = 4,
-};
 
 template <int capacity>
 struct StateStoreType {
 	using StoreDataType = std::vector<std::vector<torch::Tensor>>;
 
-	uint8_t curSeq;
+	uint32_t curSeq;
 	int curIndex;
+
+	uint32_t lastReadSeq;
 
 	StoreDataType trainStates;
 	StoreDataType trainHStates;
@@ -58,7 +56,7 @@ struct StateStoreType {
 	std::vector<float> rewards;
 
 
-	StateStoreType(): curSeq(0), curIndex(0),
+	StateStoreType(): curSeq(0), curIndex(0), lastReadSeq(0 - 1),
 			trainStates(capacity, std::vector<torch::Tensor>()),
 			trainHStates(capacity, std::vector<torch::Tensor>()),
 			trainLabels(capacity, std::vector<torch::Tensor>()),
@@ -78,9 +76,13 @@ struct StateStoreType {
 		rewards[curIndex] = 0.0f;
 	}
 
+	//TODO: Make it more dependable
 	StoreDataType getLastData() {
-		int lastIndex = (curSeq - 1) % capacity;
+		if (lastReadSeq == (curSeq - 1)) {
+			return {};
+		}
 
+		uint32_t lastIndex = (curSeq - 1) % capacity;
 		return {trainStates[lastIndex], trainHStates[lastIndex], trainLabels[lastIndex], trainActions[lastIndex], {torch::tensor(rewards[lastIndex])}};
 	}
 
@@ -89,12 +91,22 @@ struct StateStoreType {
 	}
 };
 
-
 template <typename NetType>
 class NetProxy {
 
+enum NetStatus {
+	Running = 0,
+	Updating = 1,
+	Detected = 2,
+};
+
 private:
+	const std::string name;
+	NetStatus netStatus;
+	std::mutex netStatusMutex;
+	std::condition_variable netStatusCond;
 //	torch::Tensor board;
+//TODO: Remove reference
 	TenhouState& innerState;
 
 	//For training
@@ -107,6 +119,7 @@ private:
 	bool isGru;
 	torch::Tensor gruHState;
 	int step;
+	int gameSeq;
 //	std::vector<torch::Tensor> trainHStates;
 	//TODO: To get reward of each match
 	StateStoreType<2> storage;
@@ -116,6 +129,7 @@ private:
 	std::shared_ptr<NetType> net;
 
 	std::shared_ptr<spdlog::logger> logger;
+	std::shared_ptr<std::promise<bool>> statusPromise;
 
 	std::string processInitMsg(std::string msg);
 	std::string processDoraMsg(std::string msg);
@@ -137,7 +151,6 @@ private:
 	torch::Tensor updateNet(int indType);
 	void updateLabelStore(int label);
 	void updateReward(float reward);
-	std::vector<std::vector<torch::Tensor>> getStates();
 
 //	template<typename T>
 	void initGru(std::true_type) {
@@ -153,11 +166,23 @@ private:
 	};
 
 public:
-	NetProxy(std::shared_ptr<NetType> net, TenhouState& state, TenhouPolicy& iPolicy);
+	NetProxy(const std::string name, std::shared_ptr<NetType> net, TenhouState& state, TenhouPolicy& iPolicy);
+	NetProxy(const NetProxy& other) = delete;
+
 	~NetProxy() = default;
 	std::string processMsg(std::string msg);
 	void reset();
 	void updateNet(std::shared_ptr<NetType> net);
+
+	bool isUpdating() { return netStatus == Updating; }
+	bool isRunning() { return netStatus == Running; }
+	bool setDetected();
+	void setUpdating(std::shared_ptr<std::promise<bool>> promiseObj);
+	void setRunning(std::shared_ptr<NetType> newNet);
+
+	std::vector<std::vector<torch::Tensor>> getStates();
+
+	inline std::string getName() { return name; }
 };
 
 
@@ -177,10 +202,13 @@ void NetProxy<NetType>::updateReward(float reward) {
 }
 
 template <class NetType>
-NetProxy<NetType>::NetProxy(std::shared_ptr<NetType> iNet, TenhouState& state, TenhouPolicy& iPolicy):
+NetProxy<NetType>::NetProxy(const std::string netName, std::shared_ptr<NetType> iNet, TenhouState& state, TenhouPolicy& iPolicy):
+	name(netName),
+	netStatus(Running),
 	innerState(state),
 	isGru(false),
 	step(0),
+	gameSeq(0),
 	policy(iPolicy),
 	net(iNet),
 	logger(Logger::GetLogger()){
@@ -233,7 +261,7 @@ template <class NetType>
 void NetProxy<NetType>::reset() {
 	innerState.reset();
 	policy.reset();
-	net->reset();
+//	net->reset();
 
 	initGru(std::integral_constant<bool, HasCreateHState<NetType>::Has>());
 
@@ -247,6 +275,8 @@ std::vector<std::vector<torch::Tensor>> NetProxy<NetType>::getStates() {
 //TODO: Reset
 template <class NetType>
 std::string NetProxy<NetType>::processInitMsg(std::string msg) {
+	gameSeq ++;
+
 	reset();
 //	policy.reset();
 
@@ -348,6 +378,7 @@ std::string NetProxy<NetType>::processNMsg(std::string msg) {
 	}
 
 	if (rc.playerIndex == ME) {
+		//TODO: Other indicators are also important
 		if ((rc.flag != ChowFlag) && (rc.flag != PongFlag)) {
 			return StateReturnType::Nothing;
 		}
@@ -388,7 +419,7 @@ std::string NetProxy<NetType>::processChowInd(int fromWho, int raw) {
 
 	auto action = policy.getAction(output, innerState.getCandidates(StealType::ChowType, raw));
 	updateLabelStore(action); //For rl
-	logger->debug("Get action for chow indicator {}", action);
+	logger->info("Get action for chow indicator {}", action);
 
 	if (action == ChowAction) {
 		std::vector<int> chowCandidates = innerState.getTiles(StealType::ChowType, raw);
@@ -414,6 +445,7 @@ std::string NetProxy<NetType>::processPongInd(int fromWho, int raw) {
 	updateLabelStore(action); //TODO: For rl
 
 	//TODO: replace == by function of state object
+	logger->info("Get action for pong indicator {}", action);
 	if (action == PongAction) {
 		std::vector<int> pongTiles = innerState.getTiles(StealType::PongType, raw);
 		return G::GenPongMsg(pongTiles);
@@ -426,7 +458,7 @@ template <class NetType>
 std::string NetProxy<NetType>::processRonInd(int fromWho, int raw, int type, bool isTsumogiri) {
 	//Add action executed in gameend msg
 	std::string reply = G::GenRonMsg(type);
-	logger->debug("processRonInd from {} with type {}", fromWho, type);
+	logger->info("processRonInd from {} with type {}", fromWho, type);
 
 	if ((type % 16) == 0) {
 		return reply;
@@ -458,6 +490,8 @@ std::string NetProxy<NetType>::processRonInd(int fromWho, int raw, int type, boo
 //TODO: Failed to extract reward
 template <class NetType>
 std::string NetProxy<NetType>::processGameEndInd(std::string msg) {
+	logger->info("End of game {}", gameSeq);
+
 	int reward = 0;
 	if (msg.find("AGARI") != std::string::npos) {
 		logger->debug("Process agari message");
@@ -646,13 +680,76 @@ std::string NetProxy<NetType>::processMsg(std::string msg) {
 	case GameEndMsg:
 		return processGameEndInd(msg);
 	case SilentMsg:
-		logger->error("Pass message: {}", msg);
+		logger->debug("Pass message: {}", msg);
 		return "";
 	case InvalidMsg:
 	default:
 		logger->error("Unexpected message: {}", msg);
 		return "";
 	}
+}
+
+template <class NetType>
+void NetProxy<NetType>::setUpdating(std::shared_ptr<std::promise<bool>> promiseObj) {
+	logger->warn("NetProxy to set updating: {}", getName());
+	netStatus = Updating;
+
+//	std::unique_lock<std::mutex> lock(netStatusMutex);
+//	while(netStatus != Detected) {
+//		netStatusCond.wait(lock);
+//	}
+//
+//	promiseObj->set_value(true);
+//	logger->warn("Network detected updating: {}", getName());
+//	return;
+	statusPromise = promiseObj;
+	logger->warn("Network set updating ");
+	return;
+}
+
+template <class NetType>
+bool NetProxy<NetType>::setDetected() {
+	logger->warn("NetProxy try to set detected: {}", getName());
+//	std::unique_lock<std::mutex> lock(netStatusMutex);
+//
+//	if (netStatus == Updating) {
+//		netStatus = Detected;
+//		netStatusCond.notify_one();
+//		logger->warn("NetProxy notified detected: {}", getName());
+//		return true;
+//	} else if (netStatus == Detected) {
+//		logger->warn("NetProxy had been notified by fsm: {}", getName());
+//		return false;
+//	}	else {
+//		logger->info("NetProxy is running: {}", getName());
+//		return false;
+//	}
+
+	if (netStatus == Updating) {
+		if (!statusPromise) {
+			logger->error("NetProxy no promise set: {}", getName());
+			return false;
+		} else {
+			logger->warn("NetProxy to set detected: {}", getName());
+			netStatus = Detected;
+			statusPromise->set_value(true);
+			statusPromise.reset();
+			return true;
+		}
+	} else if (netStatus == Detected) {
+		logger->warn("NetProxy had been notified by fsm: {}", getName());
+		return false;
+	} else {
+		logger->info("NetProxy is running: {}", getName());
+		return false;
+	}
+}
+
+template <class NetType>
+void NetProxy<NetType>::setRunning(std::shared_ptr<NetType> newNet) {
+	logger->warn("NetProxy set running again: {}", getName());
+	net = newNet;
+	netStatus = Running;
 }
 
 

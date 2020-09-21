@@ -1,7 +1,7 @@
 /*
- * l2net.cpp
+ * l2rlovernet.cpp
  *
- *  Created on: Sep 4, 2020
+ *  Created on: Sep 14, 2020
  *      Author: zf
  */
 
@@ -26,9 +26,11 @@
 #include "lmdbtools/LmdbDataDefs.h"
 #include "lmdbtools/Lmdb2RowDataDefs.h"
 
-#include "rltest/l2net.h"
 #include "rltest/rltestutils.h"
 #include "rltest/rltestsetting.h"
+
+#include "rltest/l2rlovernet.h"
+#include "utils/logger.h"
 
 namespace rltest {
 using Tensor = torch::Tensor;
@@ -38,7 +40,7 @@ using std::endl;
 using TensorList = torch::TensorList;
 using std::vector;
 
-void GRUL2Net::initParams() {
+void GRUL2OverNet::initParams() {
 	auto params = this->named_parameters(true);
 	for (auto ite = params.begin(); ite != params.end(); ite ++) {
 		std::cout << "Get key " << ite->key() << std::endl;
@@ -102,35 +104,53 @@ void GRUL2Net::initParams() {
 	}
 }
 
-void GRUL2Net::loadModel(const std::string modelPath) {
+void GRUL2OverNet::loadL2Model(const std::string modelPath) {
+	Logger::GetLogger()->info("To load l2 model ");
+
+	unregister_module("fcValue");
+	try {
 	torch::serialize::InputArchive inChive;
 	inChive.load_from(modelPath);
 	this->load(inChive);
+	} catch (std::exception& e) {
+		cout << "Failed to load as: " << e.what() << endl;
+	}
+
+	register_module("fcValue", fcValue);
+
+	Logger::GetLogger()->info("Loaded l2 model");
 }
 
 
-GRUL2Net::GRUL2Net(int inSeqLen):
+GRUL2OverNet::GRUL2OverNet(int inSeqLen):
 	gru0(torch::nn::GRUOptions(360, 2048).num_layers(2).batch_first(true)),
 	fc(2048, 42),
-//	fcValue(2048, 1),
+	fcValue(2048, 1),
 	seqLen(inSeqLen)
 {
-	cout << "l2 constructor" << endl;
+	Logger::GetLogger()->info("l2 constructor");
 	register_module("gru0", gru0);
 	register_module("fc", fc);
-//	register_module("fcValue", fcValue);
+	register_module("fcValue", fcValue);
 
-//		initParams();
+//	initParams();
 }
 
-Tensor GRUL2Net::inputPreprocess(Tensor input) {
+GRUL2OverNet::GRUL2OverNet(int inSeqLen, bool isL2Model, const std::string modelPath):
+		GRUL2OverNet(inSeqLen)
+{
+	loadL2Model(modelPath);
+}
+
+
+Tensor GRUL2OverNet::inputPreprocess(Tensor input) {
 //	return input.div(4);
 	return input;
 }
 
 //inputs sorted
 //TODO: Caution: inputs are re-ordered
-vector<Tensor> GRUL2Net::forward(vector<Tensor> inputs, bool isTrain) {
+vector<Tensor> GRUL2OverNet::forward(vector<Tensor> inputs, bool isTrain) {
 	vector<int> seqLens(inputs.size(), 0);
 	int total = 0;
 	for (int i = 0; i < inputs.size(); i ++) {
@@ -142,13 +162,15 @@ vector<Tensor> GRUL2Net::forward(vector<Tensor> inputs, bool isTrain) {
 		inputs[i] = torch::constant_pad_nd(inputs[i], {0, 0, 0, (seqLen - seqLens[i])});
 		seqLens[i] = std::min(seqLens[i], seqLen);
 	}
-	cout << "total input " << total << endl;
+	Logger::GetLogger()->info("total input {}", total);
+//	cout << "total input " << total << endl;
 
 //		auto temp = torch::stack(inputs, 0);
 	auto packedInput = torch::nn::utils::rnn::pack_padded_sequence(torch::stack(inputs, 0), torch::tensor(seqLens), true);
 	auto gruOutput = gru0->forward_with_packed_input(packedInput);
 	auto gruOutputData = std::get<0>(gruOutput);
-	cout << "End of gru cell " << endl;
+	Logger::GetLogger()->info("End of gru cell");
+//	cout << "End of gru cell " << endl;
 
 	auto unpacked = torch::nn::utils::rnn::pad_packed_sequence(gruOutputData, true);
 	Tensor unpackedTensor = std::get<0>(unpacked);
@@ -160,26 +182,32 @@ vector<Tensor> GRUL2Net::forward(vector<Tensor> inputs, bool isTrain) {
 		unpackDatas[i] = unpackData;
 		outputTotal += (int)unpackDatas[i].size(0);
 	}
-	cout << "Output total " << outputTotal << endl;
+	Logger::GetLogger()->info("Output total {}", outputTotal);
+//	cout << "Output total " << outputTotal << endl;
 
 	Tensor fcInput = torch::cat(unpackDatas, 0);
 	auto fcOutput = fc->forward(fcInput);
-	cout << "End of fc cell " << endl;
+	Logger::GetLogger()->info("End of fc cell");
+
+	Tensor fcValueOutput = fcValue->forward(fcInput);
+
+//	cout << "End of fc cell " << endl;
 
 //	Tensor logmaxInput = fcOutput;
 //	Tensor logmaxOutput = torch::log_softmax(logmaxInput, -1);
 //
 //	return {logmaxOutput};
 
-	return {fcOutput, fcInput};
+	return {fcOutput, fcValueOutput};
 }
 
 
-vector<Tensor> GRUL2Net::forward (vector<Tensor> inputs) {
+vector<Tensor> GRUL2OverNet::forward (vector<Tensor> inputs) {
 	Tensor input = inputs[0];
 	Tensor hState = inputs[1];
 	const int step = inputs[2].item<long>();
-	cout << "-------------------> step: " << step << endl;
+	Logger::GetLogger()->info("----------------------> step: {}", step);
+//	cout << "-------------------> step: " << step << endl;
 
 	if (input.dim() < 3) {
 		input = input.view({1, input.size(0), input.size(1)});
@@ -204,7 +232,7 @@ vector<Tensor> GRUL2Net::forward (vector<Tensor> inputs) {
 //vector: inputs, actions, returns
 //each vector: {seqLen, others}
 // inputTensors[2] = rewards = float[batchSize]
-//Tensor GRUL2Net::getLoss(vector<vector<Tensor>> inputTensors){
+//Tensor GRUL2OverNet::getLoss(vector<vector<Tensor>> inputTensors){
 //	vector<Tensor> inputs = inputTensors[InputIndex];
 //	vector<Tensor> actions = inputTensors[ActionIndex];
 //	vector<Tensor> rewards = inputTensors[RewardIndex];
@@ -250,17 +278,18 @@ vector<Tensor> GRUL2Net::forward (vector<Tensor> inputs) {
 //	return loss;
 //}
 
-Tensor GRUL2Net::createHState() {
+Tensor GRUL2OverNet::createHState() {
 	int cellSize =  gru0->options.hidden_size();
 	return torch::zeros({gru0->options.num_layers(), 1, cellSize});
 }
 
-void GRUL2Net::reset() {
+void GRUL2OverNet::reset() {
 	register_module("gru0", gru0);
 	register_module("fc", fc);
+	register_module("fcValue", fcValue);
 }
 
-void GRUL2Net::cloneFrom(const GRUL2Net& origNet) {
+void GRUL2OverNet::cloneFrom(const GRUL2OverNet& origNet) {
 //    torch::NoGradGuard no_grad;
 //
 //    this->parameters_.clear();
@@ -305,41 +334,103 @@ void GRUL2Net::cloneFrom(const GRUL2Net& origNet) {
 //    }
 }
 
-GRUL2Net::GRUL2Net(const GRUL2Net& net):
+GRUL2OverNet::GRUL2OverNet(const GRUL2OverNet& net):
 	gru0(torch::nn::GRUOptions(360, 2048).num_layers(2).batch_first(true)),
 	fc(2048, 42),
-//	fcValue(2048, 1),
+	fcValue(2048, 1),
 	seqLen(net.getSeqLen())
 {
-	cout << "l2 copy constructor" << endl;
+	Logger::GetLogger()->info("l2 copy constructor");
+//	cout << "l2 copy constructor" << endl;
 	register_module("gru0", gru0);
 	register_module("fc", fc);
-//	register_module("fcValue", fcValue);
+	register_module("fcValue", fcValue);
 
-//		initParams();
+	//TODO
+//	initParams();
 }
 
-GRUL2Net& GRUL2Net::operator=(const GRUL2Net& other) {
+GRUL2OverNet& GRUL2OverNet::operator=(const GRUL2OverNet& other) {
 	return *this;
 }
 
-GRUL2Net::GRUL2Net(GRUL2Net&& net):
+GRUL2OverNet::GRUL2OverNet(GRUL2OverNet&& net):
 	gru0(torch::nn::GRUOptions(360, 2048).num_layers(2).batch_first(true)),
 	fc(2048, 42),
-//	fcValue(2048, 1),
+	fcValue(2048, 1),
 	seqLen(net.getSeqLen())
 {
-	cout << "l2 move constructor " << endl;
+//	cout << "l2 move constructor " << endl;
+	Logger::GetLogger()->info("l2 move constructor");
 	register_module("gru0", gru0);
 	register_module("fc", fc);
-//	register_module("fcValue", fcValue);
+	register_module("fcValue", fcValue);
 
-//		initParams();
+//	initParams();
 }
 
-//GRUL2Net& GRUL2Net::operator=(GRUL2Net&& other);
+//GRUL2OverNet& GRUL2OverNet::operator=(GRUL2OverNet&& other);
 //	return *this;
 //}
+
+Tensor GRUL2OverNet::getLoss(vector<vector<Tensor>> inputTensors){
+	this->train();
+
+	vector<Tensor> inputs = inputTensors[InputIndex];
+	vector<Tensor> actions = inputTensors[ActionIndex];
+	vector<Tensor> rewards = inputTensors[RewardIndex];
+	vector<Tensor> labels = inputTensors[LabelIndex];
+
+	cout << "Input sizes: " << inputs[0].sizes() << endl;
+	cout << "action sizes: " << actions[0].sizes() << endl;
+	cout << "reward sizes: " << rewards[0].sizes() << endl;
+	cout << "label sizes: " << labels[0].sizes() << endl;
+
+	vector<Tensor> returnTensors;
+	for (int i = 0; i < rewards.size(); i ++) {
+		Tensor returnTensor = rltest::Utils::BasicReturnCalc(rewards[i], actions[i], actions[i].size(0), RlSetting::ReturnGamma);
+		returnTensors.push_back(returnTensor);
+	}
+	cout << "return sizes: " << returnTensors[0].sizes() << endl;
+
+	std::stable_sort(inputs.begin(), inputs.end(), Utils::CompTensorBySeqLen);
+	std::stable_sort(actions.begin(), actions.end(), Utils::CompTensorBySeqLen);
+	std::stable_sort(returnTensors.begin(), returnTensors.end(), Utils::CompTensorBySeqLen);
+
+	Tensor action = torch::cat(actions, 0);
+	Tensor returns = torch::cat(returnTensors, 0);
+
+
+
+	//TODO: It is not right to just forward {inputs} as inputs of forward
+	vector<Tensor> output = forward(inputs, true);
+	Tensor actionOutput = output[0];
+	Tensor valueOutput = output[1];
+
+	cout << "return sizes: " << returns.sizes() << endl;
+	cout << "value sizes: " << valueOutput.sizes() << endl;
+	cout << "actionOutput sizes: " << actionOutput.sizes() << endl;
+	cout << "valueOutput sizes: " << valueOutput.sizes() << endl;
+	Tensor adv = returns - valueOutput;
+	Tensor valueLoss = 0.5 * adv.pow(2).mean();
+
+	Tensor actionLogProbs = torch::log_softmax(actionOutput, -1); //TODO: actionOutput is of fc output
+	Tensor actionProbs = torch::softmax(actionOutput, -1);
+	actionProbs = actionProbs.clamp(1.21e-7, 1.0f - 1.21e-7);
+	Tensor entropy = -(actionLogProbs * actionProbs).sum(-1).mean();
+
+	Tensor actPi = actionLogProbs.gather(-1, action);
+	Tensor actionLoss = -(actPi * adv.detach()).mean();
+
+	Logger::GetLogger()->info("valueLoss: {}", valueLoss.item<float>());
+	Logger::GetLogger()->info("actionLoss: {}", actionLoss.item<float>());
+	Logger::GetLogger()->info("entropy: {}", entropy.item<float>());
+	Logger::GetLogger()->info("-----------------------------------------> ");
+
+	Tensor loss = valueLoss + actionLoss - entropy * 1e-4;
+
+	return loss;
+}
 }
 
 

@@ -11,10 +11,17 @@
 namespace rltest {
 
 const int RlSetting::ProxyNum = 1;
-const int RlSetting::BatchSize = 2;
-const int RlSetting::UpdateThreshold = 1; //TODO: dirty data
+const int RlSetting::BatchSize = 8;
+const int RlSetting::UpdateThreshold = 8; //TODO: dirty data
+
+const float RlSetting::ReturnGamma = 0.9;
 
 const int RlSetting::NetNum = 2;
 
-const std::vector<const std::string> RlSetting::Names;
+const std::string RlSetting::ServerIp = "133.242.10.78";
+const int RlSetting::ServerPort = 10080;
+
+//ID1A5B26F1-7CSNMXdE --> testrl1
+std::vector<std::string> RlSetting::Names {"ID715C4B99-dSNcQnGe", "ID1A5B26F1-7CSNMXdE"}; //testrl02
+//std::vector<std::string> RlSetting::Names {"ID5F706D6D-2WBML2Pe"}; //testrl0
 }

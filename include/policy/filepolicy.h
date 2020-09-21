@@ -14,8 +14,8 @@
 #include <iostream>
 #include <torch/torch.h>
 
+#include "../utils/logger.h"
 #include "policy/tenhoupolicy.h"
-#include "tenhouclient/logger.h"
 
 struct FilePolicyMsg {
 	int type;

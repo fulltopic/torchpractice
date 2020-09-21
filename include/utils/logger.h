@@ -5,8 +5,8 @@
  *      Author: zf
  */
 
-#ifndef INCLUDE_TENHOUCLIENT_LOGGER_H_
-#define INCLUDE_TENHOUCLIENT_LOGGER_H_
+#ifndef INCLUDE_UTILS_LOGGER_H_
+#define INCLUDE_UTILS_LOGGER_H_
 
 #include "spdlog/sinks/rotating_file_sink.h"
 
@@ -20,4 +20,4 @@ public:
 
 
 
-#endif /* INCLUDE_TENHOUCLIENT_LOGGER_H_ */
+#endif /* INCLUDE_UTILS_LOGGER_H_ */

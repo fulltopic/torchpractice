@@ -15,21 +15,44 @@
 #include <vector>
 
 namespace rltest {
-struct GRUL2Net: torch::nn::Module {
-private:
+struct GRUL2Net: public
+//torch::nn::Module
+torch::nn::Cloneable<GRUL2Net>
+{
+protected:
 //	const unsigned int numInputs;
 //	const unsigned int numActOutput;
 	torch::nn::GRU gru0;
 	torch::nn::Linear fc;
 
-	const int seqLen;
+	int seqLen;
 
+//protected:
+//	GRUL2Net(const GRUL2Net& other);
+//	GRUL2Net& operator=(const GRUL2Net& other);
+//	GRUL2Net(GRUL2Net&& other);
+////		GRUL2Net& operator=(GRUL2Net&& other);
 public:
+//	friend class torch::nn::Cloneable<GRUL2Net>;
+//	friend class std::shared_ptr<torch::nn::Module>;
+//	friend class std::shared_ptr<GRUL2Net>;
+
+	GRUL2Net(const GRUL2Net& other);
+	GRUL2Net& operator=(const GRUL2Net& other);
+	GRUL2Net(GRUL2Net&& other);
+//		GRUL2Net& operator=(GRUL2Net&& other);
+
 	GRUL2Net(int inSeqLen);
-	GRUL2Net(GRUL2Net& other) = delete;
-	GRUL2Net& operator=(GRUL2Net& other) = delete;
-	GRUL2Net(GRUL2Net&& other) = delete;
-	GRUL2Net& operator=(GRUL2Net&& other) = delete;
+
+//	GRUL2Net(const GRUL2Net& other) = delete;
+//	GRUL2Net& operator=(GRUL2Net& other) = delete;
+//	GRUL2Net(GRUL2Net&& other) = delete;
+//	GRUL2Net& operator=(GRUL2Net&& other) = delete;
+
+//	GRUL2Net(const GRUL2Net& other) = default;
+//	GRUL2Net& operator=(GRUL2Net& other) = default;
+//	GRUL2Net(GRUL2Net&& other) = default;
+//	GRUL2Net& operator=(GRUL2Net&& other) = default;
 
 	~GRUL2Net() = default;
 
@@ -37,11 +60,16 @@ public:
 	void initParams();
 	void loadModel(const std::string modelPath);
 
+	inline int getSeqLen() const { return seqLen; }
+
 	torch::Tensor inputPreprocess(torch::Tensor input);
 	std::vector<torch::Tensor> forward(std::vector<torch::Tensor> inputs, bool isTrain);
 	std::vector<torch::Tensor> forward (std::vector<torch::Tensor> inputs);
 	torch::Tensor createHState();
-	void reset();
+	void reset();// override;
+
+	void cloneFrom(const GRUL2Net& origNet);
+	torch::Tensor getLoss(std::vector<std::vector<torch::Tensor>> inputTensors);
 
 };
 }
