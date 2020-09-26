@@ -23,9 +23,9 @@ public:
 	RandomPolicy(float rate);
 	virtual ~RandomPolicy();
 
-	virtual int getAction(torch::Tensor values, std::vector<int> candidates);
-	virtual int getAction(torch::Tensor values, std::vector<int> candidates, std::vector<int> excludes);
-	virtual std::vector<int> getTiles4Action(torch::Tensor values, int actionType, std::vector<int> candidates, const int raw);
+	virtual int getAction(torch::Tensor values, const std::vector<int>& candidates);
+	virtual int getAction(torch::Tensor values, const std::vector<int>& candidates, const std::vector<int>& excludes);
+	virtual std::vector<int> getTiles4Action(torch::Tensor values, int actionType, const std::vector<int>& candidates, const int raw);
 	virtual void reset();
 };
 

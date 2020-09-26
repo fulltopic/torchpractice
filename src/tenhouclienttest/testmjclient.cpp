@@ -48,7 +48,7 @@ void test() {
 
 	auto netPtr = std::shared_ptr<GRUTransStepNet>(new GRUTransStepNet());
 	netPtr->loadParams(modelPath);
-	auto netProxy = std::shared_ptr<NetProxy<GRUTransStepNet>>(new NetProxy<GRUTransStepNet>("NoName", netPtr, innState, policy));
+	auto netProxy = std::shared_ptr<NetProxy<GRUTransStepNet>>(new NetProxy<GRUTransStepNet>("NoName", netPtr, {72, 5}, policy));
 //	NetProxy<GRUStepNet> netProxy(std::shared_ptr<GRUStepNet>(new GRUStepNet()), innState, policy);
 	boost::asio::io_context io;
 

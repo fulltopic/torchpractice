@@ -134,15 +134,23 @@ void testReg() {
 	cout << str6 << ": " << regex_search(str6, what, rx1) << endl;
 }
 
+static void testM() {
+	auto rc = TenhouMsgParser::ParseReinitM("m2=\"20553\"");
+	for (auto tile: rc) {
+		cout << tile << endl;
+	}
+}
+
 int main() {
 //	testInit();
 //	testDrop();
 //	testAccept();
-	testSteal();
+//	testSteal();
 //	testReach();
 //	testAgari();
 //	testRyu();
 //	testReg();
+	testM();
 }
 
 

@@ -39,7 +39,7 @@ static void test(std::string path) {
 	//TODO: share_ptr(new) and make_shared
 	auto netPtr = std::shared_ptr<GruNet_2523>(new GruNet_2523());
 	netPtr->loadParams(modelPath);
-	auto netProxy = std::shared_ptr<NetProxy<GruNet_2523>>(new NetProxy<GruNet_2523>("NoName", netPtr, innState, policy));
+	auto netProxy = std::shared_ptr<NetProxy<GruNet_2523>>(new NetProxy<GruNet_2523>("NoName", netPtr, {72, 5}, policy));
 //	NetProxy<GRUStepNet> netProxy(std::shared_ptr<GRUStepNet>(new GRUStepNet()), innState, policy);
 	boost::asio::io_context io;
 

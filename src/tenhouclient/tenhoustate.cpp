@@ -45,6 +45,7 @@ BaseState::BaseState(int ww, int hh):
 		logger(Logger::GetLogger()){
 	myTiles = vector<bool> (TenhouConsts::TileNum * TenhouConsts::NumPerTile, false);
 	innerState = torch::zeros({h, w});
+//	logger->info("Constructor: impl of innerState: {}", (void*)(innerState.unsafeGetTensorImpl()));
 }
 
 BaseState::~BaseState() {}
@@ -62,10 +63,10 @@ void BaseState::dropTile(int who, int raw) {
 		innerState[0][tile] -= 1;
 		innerState[1][tile] += 1;
 		myTiles[raw] = false;
-		logger->debug("Me drop tile {}", raw);
+//		logger->debug("Me drop tile {}", raw);
 	} else {
 		innerState[stateIndex(who)][tile] += 1;
-		logger->debug("drop tile {} from {}", raw, who);
+//		logger->debug("drop tile {} from {}", raw, who);
 	}
 }
 
@@ -119,7 +120,10 @@ void BaseState::setDora(int dora) {
 
 void BaseState::reset() {
 	myTiles.assign(myTiles.size(), false);
-	innerState = innerState.fill_(0);
+//	innerState = innerState.fill_(0);
+	innerState.fill_(0);
+	logger->info("The impl of innerState: {}", (void*)(innerState.unsafeGetTensorImpl()));
+//	innerState = torch::zeros({h, w});
 	doras.clear();
 
 	isReach = false;
@@ -259,6 +263,7 @@ vector<int> BaseState::getDropCandidates() {
 	for (int i = 0; i < TileNum; i ++) {
 		if (stateData[0][i] > 0) {
 			tiles.push_back(i);
+//			logger->debug("Pushed drop candidates: {}", i);
 		}
 	}
 	return tiles;
@@ -602,6 +607,13 @@ vector<int> BaseState::getTiles(int type, int raw) {
 	switch (type) {
 	case StealType::DropType:
 	{
+//		logger->debug ("Available tiles ");
+//		for (int i = 0; i < myTiles.size(); i ++) {
+//			if (myTiles[i]) {
+//				logger->debug("tile {}", i);
+//			}
+//		}
+
 		int tile = raw;
 		logger->debug("To get drop tiles for {}", tile);
 		vector<int> tiles;
@@ -660,7 +672,7 @@ Tensor BaseState::getState(int indType) {
 	}
 
 //	return vector<Tensor> ();
-	return {cpy.view({1, 1, w * h}).div(4)};
+	return cpy.view({1, 1, w * h}).div(4);
 }
 
 //void BaseState::updateState(vector<Tensor> newStates) {
@@ -697,4 +709,20 @@ bool BaseState::canKan(int tile, vector<int>& candidates) {
 	}
 
 	return false;
+}
+
+void BaseState::printTiles() {
+	logger->debug("Raw tiles in innerState");
+	for (int i = 0; i < myTiles.size(); i ++) {
+		if (myTiles[i]) {
+			logger->debug("{}", i);
+		}
+	}
+	logger->debug("Tiles in innerState");
+//	auto stateData = innerState.accessor<float, 2>();
+	for (int i = 0; i < TileNum; i ++) {
+		if (innerState[0][i].item<float>() > 0) {
+			logger->debug("{}", i);
+		}
+	}
 }

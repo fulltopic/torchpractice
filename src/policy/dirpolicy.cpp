@@ -138,7 +138,7 @@ void DirPolicy::reset() {
 	logger->debug("The next msg to sent: {}", msgs[index].msg);
 }
 
-int DirPolicy::getAction(Tensor values, vector<int> candidates) {
+int DirPolicy::getAction(Tensor values, const vector<int>& candidates) {
 	static auto logger = Logger::GetLogger();
 
 	for (; index < msgs.size(); index ++) {
@@ -217,7 +217,7 @@ int DirPolicy::getAction(Tensor values, vector<int> candidates) {
 }
 
 
-vector<int> DirPolicy::getTiles4Action(Tensor values, int actionType, vector<int> candidates, const int raw) {
+vector<int> DirPolicy::getTiles4Action(Tensor values, int actionType, const vector<int>& candidates, const int raw) {
 	if (candidates.size() <= 2) {
 		return candidates;
 	}
@@ -262,6 +262,6 @@ vector<int> DirPolicy::getTiles4Action(Tensor values, int actionType, vector<int
 	return candidates;
 }
 
-int DirPolicy::getAction(torch::Tensor values, std::vector<int> candidates, std::vector<int> excludes) {
+int DirPolicy::getAction(torch::Tensor values, const vector<int>& candidates, const std::vector<int>& excludes) {
 	return getAction(values, candidates);
 }

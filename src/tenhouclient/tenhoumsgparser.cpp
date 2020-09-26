@@ -643,8 +643,12 @@ bool TenhouMsgParser::IsDoraMsg(const string msg) {
 	return (msg.find("<DORA") != string::npos);
 }
 GameMsgType TenhouMsgParser::GetMsgType(const string msg) {
-	if (msg.find("INIT") != string::npos) {
+	if ((msg.find("INIT") != string::npos) && (msg.find("REINIT") == string::npos)) {
 		return GameMsgType::InitMsg;
+	} else if (msg.find("SAIKAI") != string::npos) {
+		return GameMsgType::REINITMsg;
+	} else if (msg.find("REINIT") != string::npos) {
+		return GameMsgType::REINITMsg;
 	} else if (IsDoraMsg(msg)) {
 		return GameMsgType::DoraMsg;
 	} else if (IsIndMsg(msg)) {
@@ -721,4 +725,72 @@ bool TenhouMsgParser::IsTsumogiriMsg(const string msg) {
 	}
 
 	return false;
+}
+
+std::vector<int> TenhouMsgParser::ParseReinitItems(string msg, const string key) {
+	auto valueItems = ParseValues(msg, key, ",");
+	vector<int> rc;
+	for (auto item: valueItems) {
+		rc.push_back(stoi(item));
+	}
+
+	return rc;
+}
+
+vector<int> TenhouMsgParser::ParseReinitM (std::string msg) {
+	vector<string> items;
+	split(items, msg, is_any_of("\""), token_compress_on);
+	for (auto item: items) {
+		Logger::GetLogger()->debug("item {}", item);
+	}
+	int m = stoi(items[1]);
+	int who = 0;
+
+	StealResult dummy;
+	if ((m & 0x4) > 0) {
+		dummy = ParseChow(who, m);
+	} else if ((m & 0x18) > 0) {
+		dummy = ParsePong(who, m);
+	} else if ((m & 0x20) > 0) {
+		Logger::GetLogger()->error("Received nuki, don't know how to deal with");
+		dummy = {KitaBits, -1, -1, {0, 0, 0}};
+	} else {
+		dummy = ParseKan(who, m);
+	}
+
+	Logger::GetLogger()->debug("Steal tile: {}", dummy.stealTile);
+	for (auto tile: dummy.tiles) {
+		Logger::GetLogger()->debug("tiles: {}", tile);
+	}
+
+	return dummy.tiles;
+}
+
+std::vector<std::vector<int>> TenhouMsgParser::ParseReinitMsg (std::string msg) {
+	vector<vector<int>> rc(6);
+
+	//TODO: parse hai
+	auto items = ParseItems(msg);
+	for (int i = 0; i < items.size(); i ++) {
+		if (items[i].find("oya") != string::npos) {
+			auto oyaMsg = RemoveHead("oya=\"", items[i]);
+			int oya = stoi(oyaMsg);
+			rc[0] = {oya};
+		} else if (items[i].find("hai") != string::npos) {
+			rc[1] = ParseReinitItems(items[i], "hai=\"");
+		} else if (items[i].find("kawa0") != string::npos) {
+			rc[2] = ParseReinitItems(items[i], "kawa0=\"");
+		} else if (items[i].find("kawa1") != string::npos) {
+			rc[3] = ParseReinitItems(items[i], "kawa1=\"");
+		} else if (items[i].find("kawa2") != string::npos) {
+			rc[4] = ParseReinitItems(items[i], "kawa2=\"");
+		} else if (items[i].find("kawa3") != string::npos) {
+			rc[5] = ParseReinitItems(items[i], "kawa3=\"");
+		} else if (items[i].find("m") != string::npos && items[i].find("=") != string::npos) {
+			auto stealResult = ParseReinitM(items[i]);
+			rc.push_back(stealResult);
+		}
+	}
+
+	return rc;
 }

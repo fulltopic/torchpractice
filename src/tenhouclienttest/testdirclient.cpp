@@ -46,7 +46,7 @@ static void test(string path) {
 	policy.init();
 	logger->info("Policy initiated ");
 
-	NetProxy<GRUStepNet> netProxy("NoName", std::shared_ptr<GRUStepNet>(new GRUStepNet()), innState, policy);
+	NetProxy<GRUStepNet> netProxy("NoName", std::shared_ptr<GRUStepNet>(new GRUStepNet()), {72, 5}, policy);
 	TenhouFsm fsm(netProxy);
 	logger->info("Fsm created ");
 

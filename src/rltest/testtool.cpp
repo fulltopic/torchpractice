@@ -11,6 +11,11 @@
 
 #include <iosfwd>
 #include <sstream>
+#include <thread>
+#include <condition_variable>
+#include <mutex>
+
+#include <time.h>
 
 #include <torch/torch.h>
 
@@ -22,6 +27,8 @@
 #include "lmdbtools/LmdbReader.h"
 #include "lmdbtools/LmdbDataDefs.h"
 #include "lmdbtools/Lmdb2RowDataDefs.h"
+
+#include "utils/dataqueue.hpp"
 
 using std::cout;
 using std::endl;
@@ -569,6 +576,156 @@ static void testUint() {
 
 }
 
+static void testDataQueue() {
+	R1WmQueue<int, 16> q;
+
+	for (int i = 0; i < 16; i ++) {
+		if (!q.push(std::move(i))) {
+			cout << "Failed to push " << i << endl;
+			break;
+		}
+	}
+	cout << "More push: " << q.push(16) << endl;
+	cout << "size: " << q.size() << endl;
+
+	cout << "popped: ";
+	while (!q.isEmpty()) {
+		int d = q.pop();
+		cout << d << ", ";
+	}
+	cout << endl;
+}
+
+const int threadNum = 4;
+const int writeNum = 16;
+const struct timespec layback { 0, 500 };
+std::mutex lock;
+std::condition_variable cond;
+volatile bool started = false;
+
+vector<vector<int>> writtenData(threadNum, vector<int>(16, -10));
+
+static void readTask(R1WmQueue<int, 16>& q) {
+	{
+		std::unique_lock<std::mutex> guard(lock);
+		started = true;
+		cond.notify_all();
+	}
+
+//	vector<int>& data = readData[index];
+	int readNum = 0;
+	while (readNum < writeNum * threadNum) {
+		while (q.isEmpty()) {
+			nanosleep(&layback, nullptr);
+//			sleep(1);
+		}
+		int data = q.pop();
+		cout << "read " << data << endl;
+		readNum ++;
+	}
+}
+
+static void writeTask(R1WmQueue<int, 16>& q) {
+	{
+		if (!started) {
+			std::unique_lock<std::mutex> guard(lock);
+			cond.wait(guard);
+		}
+	}
+
+	for (int i = 0; i < writeNum; i ++) {
+		while (!q.push(std::move(i))) {
+			nanosleep(&layback, nullptr);
+//			sleep(1);
+		}
+	}
+}
+
+static void testDataQThread() {
+	R1WmQueue<int, 16> q;
+	vector<std::thread> ts;
+
+	for (int i = 0; i < threadNum; i ++) {
+		ts.push_back(std::move(std::thread(writeTask, std::ref(q))));
+	}
+	readTask(q);
+
+	for (int i = 0; i < threadNum; i ++) {
+		ts[i].join();
+	}
+}
+
+static void testVector() {
+	vector<vector<int>> datas(6);
+	datas[0] = vector<int>(2, 0);
+	datas[1] = vector<int>(3, 1);
+
+	for (auto data: datas[1]) {
+		cout << "data: " << data << endl;
+	}
+}
+
+struct TestRefData {
+	int data;
+
+	TestRefData(int i): data(i) {
+		cout << "TestRefData constructor " << endl;
+	}
+
+	TestRefData(const TestRefData& other): data(other.data) {
+		cout << "TestRefData copy constructor" << endl;
+	}
+};
+
+struct TestRefWrapper {
+	TestRefData& data;
+
+	TestRefWrapper(TestRefData& input): data(input) {}
+
+	void add() {
+		data.data = data.data + 1;
+	}
+
+	void update() {
+		data = TestRefData(data.data + 10);
+	}
+
+	void printData() {
+		cout << "data = " << data.data << endl;
+	}
+};
+
+static void testRefFunc () {
+//	TestRefData data1(10);
+//	TestRefData data2(20);
+//
+//	TestRefWrapper ref1(data1);
+//	TestRefWrapper ref2(data2);
+//
+//	ref1.add();
+//	ref1.printData();
+//	ref1.update();
+//	ref1.printData();
+//
+//	ref2.printData();
+
+//	std::vector<TestRefData> datas(2, TestRefData(20));
+
+	std::vector<TestRefData> datas;
+	for (int i = 0; i < 3; i ++) {
+		datas.push_back(20);
+	}
+}
+
+
+static void testZeros () {
+	Tensor t0 = torch::zeros({2, 2});
+	Tensor t1 = torch::zeros({2, 2});
+
+	cout << "t0 " << (void*)(t0.unsafeGetTensorImpl()) << endl;
+	cout << "t1 " << (void*)(t1.unsafeGetTensorImpl()) << endl;
+}
+
 int main(int argc, char** argv) {
 //	testClone();
 //	testCloneable();
@@ -580,5 +737,13 @@ int main(int argc, char** argv) {
 //	parseOpt();
 //	testCloneTurn();
 
-	testCpyOpt();
+//	testCpyOpt();
+
+//	testDataQueue();
+//	testDataQThread();
+
+//	testVector();
+	testRefFunc();
+
+//	testZeros();
 }

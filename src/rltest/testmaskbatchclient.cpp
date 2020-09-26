@@ -59,7 +59,7 @@ static void testBatchnorm(const std::string modelPath) {
 	auto netPtr = std::shared_ptr<rltest::GRUMaskNet>(new rltest::GRUMaskNet(seqLen));
 	netPtr->loadModel(modelPath);
 	auto netProxy = std::shared_ptr<NetProxy<rltest::GRUMaskNet>>(
-			new NetProxy<rltest::GRUMaskNet>(rltest::RlSetting::Names[0], netPtr, innState, policy));
+			new NetProxy<rltest::GRUMaskNet>(rltest::RlSetting::Names[0], netPtr, {72 ,5}, policy));
 	boost::asio::io_context io;
 
 	auto pointer = asiotenhoufsm<rltest::GRUMaskNet>::Create(io, netProxy,
@@ -76,7 +76,7 @@ static void testL2(const std::string modelPath) {
 	auto netPtr = std::shared_ptr<rltest::GRUL2Net>(new rltest::GRUL2Net(seqLen));
 	netPtr->loadModel(modelPath);
 	auto netProxy = std::shared_ptr<NetProxy<rltest::GRUL2Net>>(
-			new NetProxy<rltest::GRUL2Net>(rltest::RlSetting::Names[0], netPtr, innState, policy));
+			new NetProxy<rltest::GRUL2Net>(rltest::RlSetting::Names[0], netPtr, {72, 5}, policy));
 	boost::asio::io_context io;
 
 	auto pointer = asiotenhoufsm<rltest::GRUL2Net>::Create(io, netProxy,

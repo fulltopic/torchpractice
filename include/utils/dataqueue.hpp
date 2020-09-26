@@ -36,13 +36,14 @@ public:
 	DataType pop(); //TODO: Could it be DataType&&?
 
 	bool isEmpty();
+	uint32_t size();
 
 	static int GetCapacity();
 };
-
+//One hole in the ring buffer
 template <typename DataType, int Capacity>
 R1WmQueue<DataType, Capacity>::R1WmQueue(): writeSeq((uint32_t)(-1)), holdSeq(0), readSeq(0)
-//	, datas(Capacity)
+	, datas(Capacity)
 {
 }
 
@@ -57,7 +58,7 @@ bool R1WmQueue<DataType, Capacity>::push(DataType&& data) {
 	uint32_t nextSeq = seq + 1;
 	bool toGetSeq = true;
 	while (toGetSeq) {
-		if ((nextSeq - readSeq) >= Capacity) {
+		if ((seq - readSeq) >= Capacity) {
 			return false; //full
 		}
 
@@ -68,7 +69,7 @@ bool R1WmQueue<DataType, Capacity>::push(DataType&& data) {
 		}
 	}
 
-	uint32_t index = nextSeq % Capacity;
+	uint32_t index = seq % Capacity;
 	datas[index] = data;
 	while ((writeSeq + 1) != seq) {
 		sleep(1);
@@ -101,5 +102,9 @@ int R1WmQueue<DataType, Capacity>::GetCapacity() {
 	return Capacity;
 }
 
+template<typename DataType, int Capacity>
+uint32_t R1WmQueue<DataType, Capacity>::size() {
+	return (holdSeq - readSeq);
+}
 
 #endif /* INCLUDE_UTILS_DATAQUEUE_HPP_ */

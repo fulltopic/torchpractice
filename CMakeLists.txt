@@ -248,3 +248,7 @@ target_link_libraries(testworker ${shared_libs} ${static_libs})
 add_executable(testtool src/rltest/testtool.cpp $<TARGET_OBJECTS:lmdbtools> $<TARGET_OBJECTS:nets> $<TARGET_OBJECTS:rltest> $<TARGET_OBJECTS:tenhouclient> $<TARGET_OBJECTS:policy> $<TARGET_OBJECTS:pytools> $<TARGET_OBJECTS:utils>)
 target_compile_features(testtool PUBLIC cxx_range_for)
 target_link_libraries(testtool ${shared_libs} ${static_libs})
+
+add_executable(teststrand src/rltest/teststrand.cpp)
+target_compile_features(teststrand PUBLIC cxx_range_for)
+target_link_libraries(teststrand ${shared_libs} ${static_libs})

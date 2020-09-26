@@ -46,6 +46,7 @@ public:
 	virtual bool isMinKanAction(int action) = 0;
 
 	virtual bool canKan(int tile, std::vector<int>& candidates) = 0;
+	virtual void printTiles() = 0;
 };
 
 enum LstmStateAction {
@@ -156,6 +157,8 @@ public:
 	inline virtual bool isMinKanAction(int action) {
 		return action == MinKanAction;
 	}
+
+	virtual void printTiles();
 };
 
 

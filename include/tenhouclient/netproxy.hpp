@@ -22,8 +22,10 @@
 #include <torch/torch.h>
 
 #include "utils/logger.h"
+#include "utils/datastorequeue.h"
 #include "policy/tenhoupolicy.h"
 
+#include "tenhouclient/tenhoustate.h"
 #include "tenhouclient/tenhoumsgparser.h"
 #include "tenhouclient/tenhoumsggenerator.h"
 
@@ -39,57 +41,25 @@ struct HasCreateHState {
 	static const bool Has = (sizeof(Test<T>(0)) == sizeof(char));
 };
 
+//TODO: unique_ptr better?
+struct StateDataType {
+	using ItemDataType = std::vector<torch::Tensor>;
 
-template <int capacity>
-struct StateStoreType {
-	using StoreDataType = std::vector<std::vector<torch::Tensor>>;
+	ItemDataType trainStates;
+	ItemDataType trainHStates;
+	ItemDataType trainLabels; //action executed
+	ItemDataType trainActions; //action calculated
+	float reward;
 
-	uint32_t curSeq;
-	int curIndex;
-
-	uint32_t lastReadSeq;
-
-	StoreDataType trainStates;
-	StoreDataType trainHStates;
-	StoreDataType trainLabels; //action executed
-	StoreDataType trainActions; //action calculated
-	std::vector<float> rewards;
-
-
-	StateStoreType(): curSeq(0), curIndex(0), lastReadSeq(0 - 1),
-			trainStates(capacity, std::vector<torch::Tensor>()),
-			trainHStates(capacity, std::vector<torch::Tensor>()),
-			trainLabels(capacity, std::vector<torch::Tensor>()),
-			trainActions(capacity, std::vector<torch::Tensor>()),
-			rewards(capacity, 0.0f)
-	{
+	StateDataType(): reward(0.0f) {
 	}
+	//Others default
 
-	void reset() {
-		curSeq ++;
-		curIndex = curSeq % capacity;
-
-		trainStates[curIndex].clear();
-		trainHStates[curIndex].clear();
-		trainLabels[curIndex].clear();
-		trainActions[curIndex].clear();
-		rewards[curIndex] = 0.0f;
-	}
-
-	//TODO: Make it more dependable
-	StoreDataType getLastData() {
-		if (lastReadSeq == (curSeq - 1)) {
-			return {};
-		}
-
-		uint32_t lastIndex = (curSeq - 1) % capacity;
-		return {trainStates[lastIndex], trainHStates[lastIndex], trainLabels[lastIndex], trainActions[lastIndex], {torch::tensor(rewards[lastIndex])}};
-	}
-
-	int getCurIndex () {
-		return curIndex;
+	std::vector<std::vector<torch::Tensor>> getData() {
+		return {trainStates, trainHStates, trainLabels, trainActions, {torch::tensor(reward)}};
 	}
 };
+
 
 template <typename NetType>
 class NetProxy {
@@ -106,8 +76,10 @@ private:
 	std::mutex netStatusMutex;
 	std::condition_variable netStatusCond;
 //	torch::Tensor board;
+
 //TODO: Remove reference
-	TenhouState& innerState;
+//	TenhouState& innerState;
+	BaseState innerState;
 
 	//For training
 //	std::vector<torch::Tensor> trainStates;
@@ -120,9 +92,9 @@ private:
 	torch::Tensor gruHState;
 	int step;
 	int gameSeq;
-//	std::vector<torch::Tensor> trainHStates;
-	//TODO: To get reward of each match
-	StateStoreType<2> storage;
+//	StateStoreType<2> storage;
+	//TODO: Should hold a storage data in construction?
+	StateDataType stateData;
 
 	//RandomNet net;
 	TenhouPolicy& policy;
@@ -148,6 +120,8 @@ private:
 	std::string processRonInd(int fromWho, int raw, int type, bool isTsumogiri);
 	std::string processGameEndInd(std::string msg);
 
+	std::string processReinitMsg(std::string msg);
+
 	torch::Tensor updateNet(int indType);
 	void updateLabelStore(int label);
 	void updateReward(float reward);
@@ -166,7 +140,8 @@ private:
 	};
 
 public:
-	NetProxy(const std::string name, std::shared_ptr<NetType> net, TenhouState& state, TenhouPolicy& iPolicy);
+//	NetProxy(const std::string name, std::shared_ptr<NetType> net, TenhouState& state, TenhouPolicy& iPolicy);
+	NetProxy(const std::string name, std::shared_ptr<NetType> net, at::IntArrayRef stateSize, TenhouPolicy& iPolicy);
 	NetProxy(const NetProxy& other) = delete;
 
 	~NetProxy() = default;
@@ -180,8 +155,7 @@ public:
 	void setUpdating(std::shared_ptr<std::promise<bool>> promiseObj);
 	void setRunning(std::shared_ptr<NetType> newNet);
 
-	std::vector<std::vector<torch::Tensor>> getStates();
-
+	void setGameEnd();
 	inline std::string getName() { return name; }
 };
 
@@ -192,20 +166,34 @@ using G = TenhouMsgGenerator;
 
 template<class NetType>
 void NetProxy<NetType>::updateLabelStore(int label) {
-	int curIndex = storage.getCurIndex();
-	storage.trainLabels[curIndex].push_back(torch::tensor(label));
+	stateData.trainLabels.push_back(torch::tensor(label));
 }
 
 template<class NetType>
 void NetProxy<NetType>::updateReward(float reward) {
-	storage.rewards[storage.curIndex] = reward;
+	stateData.reward += reward;
 }
 
+//template <class NetType>
+//NetProxy<NetType>::NetProxy(const std::string netName, std::shared_ptr<NetType> iNet, TenhouState& state, TenhouPolicy& iPolicy):
+//	name(netName),
+//	netStatus(Running),
+//	innerState(state),
+//	isGru(false),
+//	step(0),
+//	gameSeq(0),
+//	policy(iPolicy),
+//	net(iNet),
+//	logger(Logger::GetLogger()){
+//
+//	initGru(std::integral_constant<bool, HasCreateHState<NetType>::Has>());
+//}
+
 template <class NetType>
-NetProxy<NetType>::NetProxy(const std::string netName, std::shared_ptr<NetType> iNet, TenhouState& state, TenhouPolicy& iPolicy):
+NetProxy<NetType>::NetProxy(const std::string netName, std::shared_ptr<NetType> iNet, at::IntArrayRef stateSize, TenhouPolicy& iPolicy):
 	name(netName),
 	netStatus(Running),
-	innerState(state),
+	innerState(BaseState(stateSize[0], stateSize[1])),
 	isGru(false),
 	step(0),
 	gameSeq(0),
@@ -218,21 +206,19 @@ NetProxy<NetType>::NetProxy(const std::string netName, std::shared_ptr<NetType> 
 
 template <class NetType>
 torch::Tensor NetProxy<NetType>::updateNet(int indType) {
-	const int curIndex = storage.getCurIndex();
-
 	if (isGru) {
 		logger->debug("updateNet gru");
 		torch::Tensor state = innerState.getState(indType);
 
-		storage.trainStates[curIndex].push_back(state.detach().clone()); //TODO: Maybe detach not necessary
-		storage.trainHStates[curIndex].push_back(gruHState.detach().clone());
+		stateData.trainStates.push_back(state.detach().clone());
+		stateData.trainHStates.push_back(gruHState.detach().clone());
 
 		std::vector<torch::Tensor> netOutput = net->forward(std::vector{state, gruHState, torch::tensor(step)});
 		// get max index
 		torch::Tensor actProb = netOutput[0];
 		actProb = actProb.clamp(1.21e-7, 1.0f - 1.21e-7);
 		torch::Tensor action = actProb.multinomial(1, false);
-		storage.trainActions[curIndex].push_back(action);
+		stateData.trainActions.push_back(action);
 
 		gruHState = netOutput[1];
 		step ++;
@@ -241,14 +227,14 @@ torch::Tensor NetProxy<NetType>::updateNet(int indType) {
 		logger->debug("updateNet non gru");
 		torch::Tensor state = innerState.getState(indType);
 
-		storage.trainStates[curIndex].push_back(state.detach().clone()); //TODO: Maybe detach not necessary
+		stateData.trainStates.push_back(state.detach().clone()); //TODO: Is detach necessary?
 
 		std::vector<torch::Tensor> netOutput = net->forward(std::vector{state});
 
 		torch::Tensor actProb = netOutput[0];
 		actProb = actProb.clamp(1.21e-7, 1.0f - 1.21e-7);
 		torch::Tensor action = actProb.multinomial(1, false);
-		storage.trainActions[curIndex].push_back(action);
+		stateData.trainActions.push_back(action);
 
 		return netOutput[0];
 	}
@@ -267,18 +253,19 @@ void NetProxy<NetType>::reset() {
 
 }
 
-template <class NetType>
-std::vector<std::vector<torch::Tensor>> NetProxy<NetType>::getStates() {
-	return std::move(storage.getLastData());
-}
 
 //TODO: Reset
 template <class NetType>
 std::string NetProxy<NetType>::processInitMsg(std::string msg) {
 	gameSeq ++;
 
+//	logger->info("Before reset ");
+//	innerState.printTiles();
+
 	reset();
 //	policy.reset();
+//	logger->info("After reset");
+//	innerState.printTiles();
 
 	auto rc = P::ParseInit(msg);
 	innerState.setOwner(rc.oyaIndex);
@@ -287,7 +274,8 @@ std::string NetProxy<NetType>::processInitMsg(std::string msg) {
 	for (int i = 0; i < rc.tiles.size(); i ++) {
 		innerState.addTile(rc.tiles[i]);
 	}
-	logger->debug("After innerState update");
+	logger->info("After innerState update");
+//	innerState.printTiles();
 
 	return StateReturnType::Nothing;
 }
@@ -319,7 +307,10 @@ std::string NetProxy<NetType>::processAccept(std::string msg) {
 
 	innerState.addTile(rc);
 	logger->debug("Added tile for accept");
+//	std::cout << "innerState: " << &innerState << std::endl;
 
+	logger->debug("Before getCandidates");
+//	innerState.printTiles();
 	auto candidates = innerState.getCandidates(StealType::DropType, rc);
 	logger->debug("After candidates {}", candidates.size());
 	for (int i = 0; i < candidates.size(); i ++) {
@@ -358,8 +349,12 @@ std::string NetProxy<NetType>::processAccept(std::string msg) {
 //		return reply + G::GenDropMsg(dropTile[0]);
 	} else {
 		logger->debug("Get action {}", action);
+//		std::cout << "innerState 1: " << &innerState << std::endl;
+		logger->debug("Before getTiles");
+//		innerState.printTiles();
 		auto dropTile = innerState.getTiles(StealType::DropType, action);
 		logger->debug("Get drop tiles {}", dropTile.size());
+//		innerState.printTiles();
 
 		if (action == P::Raw2Tile(rc)) {
 			return G::GenDropMsg(rc);
@@ -487,7 +482,7 @@ std::string NetProxy<NetType>::processRonInd(int fromWho, int raw, int type, boo
 	return reply;
 }
 
-//TODO: Failed to extract reward
+//TODO: There may be more than one game end message per game
 template <class NetType>
 std::string NetProxy<NetType>::processGameEndInd(std::string msg) {
 	logger->info("End of game {}", gameSeq);
@@ -510,7 +505,8 @@ std::string NetProxy<NetType>::processGameEndInd(std::string msg) {
 
 //	std::vector<torch::Tensor> inputs = innerState.endGame();
 	updateReward(reward);
-	storage.reset();
+//	DataStoreQ::GetDataQ().push(stateData.getData());
+//	stateData = StateDataType(); //TODO: unique_ptr is better?
 
 //	policy.reset();
 
@@ -662,6 +658,8 @@ std::string NetProxy<NetType>::processMsg(std::string msg) {
 	logger->debug("Received message type: {}", msgType);
 	//TODO: IndMsg
 	switch (msgType) {
+	case REINITMsg:
+		return processReinitMsg(msg);
 	case InitMsg:
 		logger->debug("To process init msg");
 		return processInitMsg(msg);
@@ -750,6 +748,55 @@ void NetProxy<NetType>::setRunning(std::shared_ptr<NetType> newNet) {
 	logger->warn("NetProxy set running again: {}", getName());
 	net = newNet;
 	netStatus = Running;
+}
+
+template <class NetType>
+void NetProxy<NetType>::setGameEnd() {
+	logger->warn("NetProxy set game end: {}", getName());
+	if (!DataStoreQ::GetDataQ().push(stateData.getData())) {
+		logger->error("Failed to push data, queue busy: {}",  getName());
+	}
+	stateData = StateDataType(); //TODO: unique_ptr is better?
+}
+
+template <class NetType>
+std::string NetProxy<NetType>::processReinitMsg(std::string msg) {
+	logger->info("Reinit before reset ");
+	innerState.printTiles();
+
+	gameSeq ++;
+	reset();
+
+	logger->info("Reinit after reset");
+	innerState.printTiles();
+
+	//oya, ten, kawa0 ~ 3
+	std::vector<std::vector<int>> values = P::ParseReinitMsg(msg);
+
+	innerState.setOwner(values[0][0]);
+
+	logger->debug("After parse reinit ");
+	for (int i = 0; i < values[1].size(); i ++) {
+		innerState.addTile(values[1][i]);
+	}
+	//Compensation
+	for (auto value: values[2]) {
+		innerState.addTile(value);
+	}
+	//oya, hai, drops for 4 players
+	for (int i = 2; i < 6; i ++) {
+		for (auto value: values[i]) {
+			innerState.dropTile((i - 2), value);
+		}
+	}
+	//m: m2=\"43601\"
+	for (int i = 6; i < values.size(); i ++) {
+		innerState.fixTile(ME, values[i]);
+	}
+	//TODO: kawa0, add to drop list directly, not drop procession
+	logger->debug("After reinnerState update");
+
+	return StateReturnType::Nothing;
 }
 
 

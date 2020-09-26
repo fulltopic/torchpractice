@@ -119,7 +119,7 @@ void FilePolicy::reset() {
 //	}
 }
 
-int FilePolicy::getAction(Tensor values, vector<int> candidates ) {
+int FilePolicy::getAction(Tensor values, const vector<int>& candidates ) {
 	static auto logger = Logger::GetLogger();
 
 	std::cout << "Get output sizes: " << values.sizes() << std::endl;
@@ -199,7 +199,7 @@ int FilePolicy::getAction(Tensor values, vector<int> candidates ) {
 	}
 }
 
-vector<int> FilePolicy::getTiles4Action(Tensor values, int actionType, vector<int> candidates, const int raw) {
+vector<int> FilePolicy::getTiles4Action(Tensor values, int actionType, const vector<int>& candidates, const int raw) {
 	if (candidates.size() <= 2) {
 		return candidates;
 	}
@@ -244,7 +244,7 @@ vector<int> FilePolicy::getTiles4Action(Tensor values, int actionType, vector<in
 	return candidates;
 }
 
-int FilePolicy::getAction(torch::Tensor values, std::vector<int> candidates, std::vector<int> excludes) {
+int FilePolicy::getAction(torch::Tensor values, const std::vector<int>& candidates, const std::vector<int>& excludes) {
 	return getAction(values, candidates);
 }
 

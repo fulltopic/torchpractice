@@ -31,7 +31,7 @@ RandomPolicy::RandomPolicy(float rate): rndRate(rate), logger(Logger::GetLogger(
 
 RandomPolicy::~RandomPolicy() {}
 
-int RandomPolicy::getAction(Tensor values, vector<int> candidates) {
+int RandomPolicy::getAction(Tensor values, const vector<int>& candidates) {
 	auto rc = values.sort(-1, true);
 	auto indexes = std::get<1>(rc);
 //	cout << "indexes " << indexes << endl;
@@ -74,7 +74,7 @@ int RandomPolicy::getAction(Tensor values, vector<int> candidates) {
 	return -1;
 }
 
-int RandomPolicy::getAction(Tensor values, vector<int> candidates, std::vector<int> excludes) {
+int RandomPolicy::getAction(Tensor values, const vector<int>& candidates, const std::vector<int>& excludes) {
 //	if (find(candidates.begin(), candidates.end(), LstmStateAction::ChowAction) != candidates.end()) {
 //		return LstmStateAction::ChowAction;
 //	}
@@ -113,7 +113,7 @@ int RandomPolicy::getAction(Tensor values, vector<int> candidates, std::vector<i
 	return getAction(values, candidates);
 }
 
-vector<int> RandomPolicy::getTiles4Action(Tensor values, int actionType, vector<int> candidates, const int raw) {
+vector<int> RandomPolicy::getTiles4Action(Tensor values, int actionType, const vector<int>& candidates, const int raw) {
 	logger->debug("Get tiles for action {}", actionType);
 
 	if (actionType != LstmStateAction::ChowAction) {

@@ -29,6 +29,8 @@ enum GameMsgType {
 
 	DoraMsg,
 
+	REINITMsg,
+
 	InvalidMsg,
 };
 
@@ -159,6 +161,10 @@ public:
 
 	static StealType GetIndType(const std::string msg);
 	static bool IsTsumogiriMsg(const std::string msg);
+
+	static std::vector<int> ParseReinitItems(std::string msg, const std::string key);
+	static std::vector<std::vector<int>> ParseReinitMsg (std::string msg);
+	static std::vector<int> ParseReinitM (std::string msg); //"m2=\"43601\""
 };
 
 

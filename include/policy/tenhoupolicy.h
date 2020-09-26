@@ -16,9 +16,9 @@ class TenhouPolicy {
 public:
 	TenhouPolicy() = default;
 	virtual ~TenhouPolicy() = 0;
-	virtual int getAction(torch::Tensor values, std::vector<int> candidates) = 0;
-	virtual int getAction(torch::Tensor values, std::vector<int> candidates, std::vector<int> excludes) = 0;
-	virtual std::vector<int> getTiles4Action(torch::Tensor values, int actionType, std::vector<int> candidates, const int raw) = 0;
+	virtual int getAction(torch::Tensor values, const std::vector<int>& candidates) = 0;
+	virtual int getAction(torch::Tensor values, const std::vector<int>& candidates, const std::vector<int>& excludes) = 0;
+	virtual std::vector<int> getTiles4Action(torch::Tensor values, int actionType, const std::vector<int>& candidates, const int raw) = 0;
 	virtual void reset() = 0;
 };
 

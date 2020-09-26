@@ -386,6 +386,8 @@ Tensor GRUL2OverNet::getLoss(vector<vector<Tensor>> inputTensors){
 	cout << "reward sizes: " << rewards[0].sizes() << endl;
 	cout << "label sizes: " << labels[0].sizes() << endl;
 
+	cout << "label games: " << labels.size() << endl;
+	cout << "reward games: " << rewards.size() << endl;
 	vector<Tensor> returnTensors;
 	for (int i = 0; i < rewards.size(); i ++) {
 		Tensor returnTensor = rltest::Utils::BasicReturnCalc(rewards[i], actions[i], actions[i].size(0), RlSetting::ReturnGamma);

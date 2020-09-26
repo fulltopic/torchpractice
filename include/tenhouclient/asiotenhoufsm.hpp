@@ -360,6 +360,10 @@ void asiotenhoufsm<NetType>::joinState(const ErrorCode &e, std::size_t len) {
 				}
 			} else if (msgs[i].find("TAIKYOKU") != S::npos) {
 				gameBegin = true;
+			} else if (msgs[i].find("REINIT") != S::npos || msgs[i].find("SAIKAI") != S::npos) {
+				processGameMsg(msgs[i]);
+				RegRcv(gameState);
+				return;
 			} else {
 				logUnexpMsg("joinState", msgs[i]);
 			}
@@ -453,8 +457,8 @@ void asiotenhoufsm<NetType>::readyState(const ErrorCode &e, std::size_t len) {
 		} else if (msg.find("PROF") != S::npos) {
 			RegRcv(sceneEndState);
 		} else if (P::IsGameEnd(msg)) {
+			//Sometimes, sceneEndMsg --> readyState --> gameEndMsg
 			processGameMsg(msg);
-
 			RegRcv(readyState);
 		}else {
 			logUnexpMsg("readyState", msg);
@@ -467,30 +471,67 @@ void asiotenhoufsm<NetType>::readyState(const ErrorCode &e, std::size_t len) {
 template<class NetType>
 void asiotenhoufsm<NetType>::gameEndState(const ErrorCode &e, std::size_t len) {
 	if ((!e) || (e == boost::asio::error::message_size)) {
+		gameEnd2NextTimer.cancel(); //TODO: Check cancel  result, the first gameend in gameState set the timer
+
 		S msg (rcvBuf.data(), len);
-		logger->debug("gameEnd received msg: {}", msg);
+		logger->debug("gameEnd received msg: {}, timer cancelled", msg);
 
-		if (msg.find("PROF") != S::npos) {
-			gameEnd2NextTimer.cancel();
+		auto msgs = splitRcvMsg(msg);
+		bool isSceneEndMsg = false;
+		bool isGameEndMsg = false;
 
+		for (int i = 0; i < msgs.size(); i ++) {
+			if (msgs[i].find("PROF") != S::npos) {
+				isSceneEndMsg = true;
+			} else if (P::IsGameEnd(msgs[i])) {
+				isGameEndMsg = true;
+				processGameMsg(msgs[i]);
+			}
+		}
+
+		if (isSceneEndMsg) {
 			sceneEnd2StartTimer.expires_from_now(boost::posix_time::seconds(SceneEnd2StartTimeout));
 			sceneEnd2StartTimer.async_wait(boost::bind(&asiotenhoufsm<NetType>::sceneEnd2StartTimerHandle, this->shared_from_this(),
 					boost::asio::placeholders::error));
 			RegRcv(sceneEndState);
-		} else if (P::IsGameEnd(msg)) {
-			gameEnd2NextTimer.cancel();
+		} else if (isGameEndMsg) {
+//			send(G::GenNextReadyMsg()); //TODO: Send message in timeout
 
-			processGameMsg(msg);
-			send(G::GenNextReadyMsg());
-
-			RegRcv(gameEndState);
 			gameEnd2NextTimer.expires_from_now(boost::posix_time::seconds(GameEnd2NextTimeout));
 			gameEnd2NextTimer.async_wait(boost::bind(&asiotenhoufsm<NetType>::gameEnd2NextTimerHandle, this->shared_from_this(),
 					boost::asio::placeholders::error));
+			RegRcv(gameEndState);
 		} else {
 			logUnexpMsg("gameEnd", msg);
+			RegRcv(gameEndState);
 		}
-	} else {
+	}
+//	if ((!e) || (e == boost::asio::error::message_size)) {
+//		S msg (rcvBuf.data(), len);
+//		logger->debug("gameEnd received msg: {}", msg);
+//
+//		if (msg.find("PROF") != S::npos) {
+//			gameEnd2NextTimer.cancel();
+//
+//			sceneEnd2StartTimer.expires_from_now(boost::posix_time::seconds(SceneEnd2StartTimeout));
+//			sceneEnd2StartTimer.async_wait(boost::bind(&asiotenhoufsm<NetType>::sceneEnd2StartTimerHandle, this->shared_from_this(),
+//					boost::asio::placeholders::error));
+//			RegRcv(sceneEndState);
+//		} else if (P::IsGameEnd(msg)) {
+//			gameEnd2NextTimer.cancel();
+//
+//			processGameMsg(msg);
+//			send(G::GenNextReadyMsg());
+//
+//			RegRcv(gameEndState);
+//			gameEnd2NextTimer.expires_from_now(boost::posix_time::seconds(GameEnd2NextTimeout));
+//			gameEnd2NextTimer.async_wait(boost::bind(&asiotenhoufsm<NetType>::gameEnd2NextTimerHandle, this->shared_from_this(),
+//					boost::asio::placeholders::error));
+//		} else {
+//			logUnexpMsg("gameEnd", msg);
+//		}
+//	}
+	else {
 		logNetworkErr("gameEnd", e.message());
 	}
 }
@@ -502,8 +543,12 @@ void asiotenhoufsm<NetType>::gameEnd2NextTimerHandle(const boost::system::error_
 		logger->warn("The gameEnd2NextTimer had been cancelled ");
 	} else if (!e) {
 		logger->warn("gameEnd2NextTimer expiring");
+		net->setGameEnd();
+
 		sock.cancel();
 
+		//TODO: Set game end indicator to netproxy
+		send(G::GenNextReadyMsg());
 		send(G::GenNoopMsg());
 		RegRcv(readyState);
 	} else {
@@ -517,41 +562,80 @@ void asiotenhoufsm<NetType>::gameState(const ErrorCode &e, std::size_t len) {
 		S msg (rcvBuf.data(), len);
 		logger->debug("game received msg: {}", msg);
 
-		if (msg.find("PROF") != S::npos) {
-			auto msgs = splitRcvMsg(msg);
-
-			if (msgs.size() == 1) {
-				RegRcv(sceneEndState);
-				return;
-			} else {
-				for (int i = 0; i < msgs.size(); i ++) {
-					if (U::IsTerminalMsg(msgs[i])) {
-						processGameMsg(msgs[i]);
-					}
-				}
-
-				sceneEnd2StartTimer.expires_from_now(boost::posix_time::seconds(SceneEnd2StartTimeout));
-				sceneEnd2StartTimer.async_wait(boost::bind(&asiotenhoufsm::sceneEnd2StartTimerHandle, this->shared_from_this(),
-									boost::asio::placeholders::error));
-				RegRcv(sceneEndState);
-			}
-		}
 		if (!U::IsGameMsg(msg)) {
 			logger->warn("Received unexpected msg: {}", msg);
 			RegRcv(gameState);
 			return;
 		}
 
-		bool isTerminal = U::IsTerminalMsg(msg);
-		processGameMsg(msg);
+		if (msg.find("PROF") != S::npos) {
+			logger->info("PROF msg {}: {}", net->getName(), msg);
+			auto msgs = splitRcvMsg(msg);
 
-		if(isTerminal) {
-			send(G::GenNextReadyMsg());
-			RegRcv(readyState);
+			for (int i = 0; i < msgs.size(); i ++) {
+				if (U::IsTerminalMsg(msgs[i])) {
+					processGameMsg(msgs[i]); //TODO: Seemed should get reward from the message
+				}
+			}
+			sceneEnd2StartTimer.expires_from_now(boost::posix_time::seconds(SceneEnd2StartTimeout));
+			sceneEnd2StartTimer.async_wait(boost::bind(&asiotenhoufsm::sceneEnd2StartTimerHandle, this->shared_from_this(),
+								boost::asio::placeholders::error));
+			RegRcv(sceneEndState);
+
+			return;
 		} else {
-			RegRcv(gameState);
+			bool isTerminal = U::IsTerminalMsg(msg);
+			processGameMsg(msg);
+
+			if(isTerminal) {
+				logger->info("GameEnd msg {}: {}", net->getName(), msg);
+				gameEnd2NextTimer.expires_from_now(boost::posix_time::seconds(GameEnd2NextTimeout));
+				gameEnd2NextTimer.async_wait(boost::bind(&asiotenhoufsm::gameEnd2NextTimerHandle, this->shared_from_this(),
+								boost::asio::placeholders::error));
+				RegRcv(gameEndState);
+			} else {
+				RegRcv(gameState);
+			}
 		}
-	} else {
+	}
+//	if ((!e) || (e == boost::asio::error::message_size)) {
+//		S msg (rcvBuf.data(), len);
+//		logger->debug("game received msg: {}", msg);
+//
+//		if (msg.find("PROF") != S::npos) {
+//			auto msgs = splitRcvMsg(msg);
+//
+//			if (msgs.size() == 1) {
+//				RegRcv(sceneEndState);
+//				return;
+//			} else {
+//				for (int i = 0; i < msgs.size(); i ++) {
+//					if (U::IsTerminalMsg(msgs[i])) {
+//						processGameMsg(msgs[i]); //TODO: Seemed should get reward from the message
+//					}
+//				}
+//
+//				sceneEnd2StartTimer.expires_from_now(boost::posix_time::seconds(SceneEnd2StartTimeout));
+//				sceneEnd2StartTimer.async_wait(boost::bind(&asiotenhoufsm::sceneEnd2StartTimerHandle, this->shared_from_this(),
+//									boost::asio::placeholders::error));
+//				RegRcv(sceneEndState);
+//				//TODO: Should return?
+//				return;
+//			}
+//		}
+//
+//		bool isTerminal = U::IsTerminalMsg(msg);
+//		processGameMsg(msg); //TODO: Duplicated message procession
+//
+//		if(isTerminal) {
+//			//TODO: Why turn to readyState?
+//			send(G::GenNextReadyMsg());
+//			RegRcv(readyState);
+//		} else {
+//			RegRcv(gameState);
+//		}
+//	}
+	else {
 		logNetworkErr("gameState", e.message());
 		if (e == boost::asio::error::eof) {
 			RegRcv(gameState);
@@ -562,29 +646,50 @@ void asiotenhoufsm<NetType>::gameState(const ErrorCode &e, std::size_t len) {
 template<class NetType>
 void asiotenhoufsm<NetType>::sceneEndState(const ErrorCode &e, std::size_t len) {
 	if ((!e) || (e == boost::asio::error::message_size)) {
+		sceneEnd2StartTimer.cancel();
+
 		S msg (rcvBuf.data(), len);
-		logger->debug("sceneEnd received msg: {}", msg);
+		logger->info("sceneEnd received msg: {}", msg);
 
-		if (U::IsTerminalMsg(msg)) {
-			sceneEnd2StartTimer.cancel();
-
-			processGameMsg(msg);
-			send(G::GenNextReadyMsg());
-
-			sceneEnd2StartTimer.expires_from_now(boost::posix_time::seconds(SceneEnd2StartTimeout));
-			sceneEnd2StartTimer.async_wait(boost::bind(&asiotenhoufsm::sceneEnd2StartTimerHandle, this->shared_from_this(),
-					boost::asio::placeholders::error));
-			RegRcv(sceneEndState);
-
-		} else {
-			logUnexpMsg("sceneEndState", msg);
+		auto msgs = splitRcvMsg(msg);
+		bool isGameEndMsg = false;
+		for (int i = 0; i < msgs.size(); i ++) {
+			if (P::IsGameEnd(msgs[i])) {
+				isGameEndMsg = true;
+				processGameMsg(msgs[i]);
+			} else {
+				logUnexpMsg("sceneEndState", msgs[i]);
+			}
 		}
+
+		if (isGameEndMsg) {
+			send(G::GenNextReadyMsg());
+		}
+		sceneEnd2StartTimer.expires_from_now(boost::posix_time::seconds(SceneEnd2StartTimeout));
+		sceneEnd2StartTimer.async_wait(boost::bind(&asiotenhoufsm::sceneEnd2StartTimerHandle, this->shared_from_this(),
+				boost::asio::placeholders::error));
+		RegRcv(sceneEndState);
+//
+//
+//		if (U::IsTerminalMsg(msg)) {
+//			sceneEnd2StartTimer.cancel();
+//
+//			processGameMsg(msg);
+//			send(G::GenNextReadyMsg());
+//
+//			sceneEnd2StartTimer.expires_from_now(boost::posix_time::seconds(SceneEnd2StartTimeout));
+//			sceneEnd2StartTimer.async_wait(boost::bind(&asiotenhoufsm::sceneEnd2StartTimerHandle, this->shared_from_this(),
+//					boost::asio::placeholders::error));
+//			RegRcv(sceneEndState);
+//
+//		} else {
+//			logUnexpMsg("sceneEndState", msg);
+//		}
 	} else {
 		logNetworkErr("sceneEndState", e.message());
 	}
 }
 
-//TODO: Maybe gameend is better than scene end for detecting update
 template<class NetType>
 void asiotenhoufsm<NetType>::sceneEnd2StartTimerHandle(const ErrorCode &e) {
 	logger->info("sceneEnd2StartTimer e = {}: {} ",e.value(), e.message());
@@ -595,6 +700,8 @@ void asiotenhoufsm<NetType>::sceneEnd2StartTimerHandle(const ErrorCode &e) {
 
 		if (!net->isRunning()) {
 			if (net->setDetected()) {
+				net->setGameEnd();
+
 				sock.cancel();
 
 				send(G::GenByeMsg());
@@ -610,6 +717,8 @@ void asiotenhoufsm<NetType>::sceneEnd2StartTimerHandle(const ErrorCode &e) {
 					boost::asio::placeholders::error));
 
 		} else {
+			net->setGameEnd();
+
 			sock.cancel();
 
 			//Maybe an extra message
