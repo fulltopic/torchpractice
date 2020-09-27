@@ -42,14 +42,14 @@ public:
 	static const int GameEnd2NextTimeout;// = 2;
 	static const int SceneEnd2StartTimeout;// = 5;
 	static const int KATimeout;// = 15;
-	static const int LNThreshold;
-	static const int ReConnTimeout;
+	static const int LNThreshold; // = 8
+	static const int ReConnTimeout; // = 15
+	static const int ReConnTrial; // = 10
+	static const int ReConnThreshold; // = 60 (second)
 
-	//TODO: for instance
 	const std::string name;
 
 	typedef boost::shared_ptr<asiotenhoufsm<NetType>> pointer;
-//	static pointer Create (boost::asio::io_context& io, NetProxy<RandomNet>& net);
 	static pointer Create (boost::asio::io_context& io, std::shared_ptr<NetProxy<NetType>> net,
 			const std::string serverIp, const int serverPort, const std::string tenhouName);
 
@@ -65,7 +65,6 @@ private:
 	boost::asio::ip::tcp::socket sock;
 	boost::array<char, 512> rcvBuf;
 
-//	NetProxy<RandomNet>& net;
 	std::shared_ptr<NetProxy<NetType>> net;
 	std::shared_ptr<spdlog::logger> logger;
 
@@ -77,6 +76,7 @@ private:
 	bool authenticated;
 	bool gameBegin;
 	int lnCount;
+	int restartCount;
 
 //	asiotenhoufsm(boost::asio::io_context& iio, NetProxy<RandomNet>& iNet);
 	asiotenhoufsm(boost::asio::io_context& iio, std::shared_ptr<NetProxy<NetType>> iNet,
@@ -103,6 +103,8 @@ private:
 	inline void logUnexpMsg(const std::string stateName, const std::string msg) {
 		logger->error("{} received unexpected msg: {}", stateName, msg);
 	}
+
+	//TODO: To recover and reconnect
 	inline void logNetworkErr(const std::string stateName, const std::string msg) {
 		logger->error("{} networking failure: {}", stateName, msg);
 	}
@@ -130,17 +132,11 @@ template<class NetType>
 const int asiotenhoufsm<NetType>::LNThreshold = 8;
 template<class NetType>
 const int asiotenhoufsm<NetType>::ReConnTimeout = 15;
+template<class NetType>
+const int asiotenhoufsm<NetType>::ReConnTrial = 10;
+template<class NetType>
+const int asiotenhoufsm<NetType>::ReConnThreshold = 10;
 
-//template<class NetType>
-//const std::string asiotenhoufsm<NetType>::name = "ID5F706D6D-2WBML2Pe"; //testrl0
-
-//static const std::string ServerIp = "127.0.0.1";
-//static const int ServerPort = 26238;
-
-//static const std::string ServerIp = "133.242.10.78";
-//static const int ServerPort = 10080;
-//static const std::string ServerIp = "127.0.0.1";
-//static const int ServerPort = 26238;
 
 
 #define RegRcv(handle) sock.async_receive(	\
@@ -165,7 +161,8 @@ asiotenhoufsm<NetType>::asiotenhoufsm(boost::asio::io_context& iio, std::shared_
 	  reConnTimer(iio),
 	  authenticated(false),
 	  gameBegin(false),
-	  lnCount(0)
+	  lnCount(0),
+	  restartCount(0)
 {
 }
 
@@ -194,19 +191,6 @@ void asiotenhoufsm<NetType>::send (std::string msg) {
 		return;
 	}
 
-//	logger->info("Test mutable buffer");
-//	std::string testStr("<HELO name=\"NoName\" tid=\"f0\" sx=\"M\" />");
-//	testStr.resize(testStr.length() + 1);
-//	boost::asio::mutable_buffer testBuf((void*)testStr.data(), testStr.length());
-////	logger->info("Generated mutable buffer {}: {}", (char*)testBuf.data(), testBuf.size());
-//	logger->info("Extended mutable buffer {}: {}", (char*)testBuf.data(), testBuf.size());
-//	auto testData = (char*)testBuf.data();
-//	testData[testBuf.size() - 1] = 0;
-//	logger->info("testbuf {}: {}", msg, testBuf.size());
-
-//	std::string expStr("<HELO name=\"NoName\" tid=\"f0\" sx=\"M\" />\\0");
-//	logger->info("Size of {} = {}", testStr, testStr.length());
-//	logger->info("Size of {} = {}", expStr, expStr.length());
 	if (msg.find(StateReturnType::SplitToken) != S::npos) {
 		std::vector<S> items;
 		boost::split(items, msg,
@@ -214,16 +198,28 @@ void asiotenhoufsm<NetType>::send (std::string msg) {
 		logger->debug("To sent splitted msg {}", items.size());
 		for (int i = 0; i < items.size(); i ++) {
 			items[i].resize(items[i].length() + 1);
-			sock.send(boost::asio::buffer(items[i].data(), items[i].length()));
-			logger->debug("Sent {}", items[i]);
-			sleep(1);
+			try {
+				sock.send(boost::asio::buffer(items[i].data(), items[i].length()));
+				logger->debug("Sent {}", items[i]);
+				sleep(1);
+			} catch (boost::system::system_error& e) {
+				logger->error ("Send error: {}", e.what());
+				//TODO: Reconnect
+				logger->info("To reset");
+				reset();
+			}
 		}
 	} else {
 		msg.resize(msg.length() + 1);
+		try {
 		logger->debug("Sent {}, {}", msg, msg.length());
-//		sock.send(boost::asio::buffer(msg.data(), msg.length() + 1));
 		sock.send(boost::asio::buffer(msg.data(), msg.length()));
 		sleep(1);
+		} catch (boost::system::system_error& e) {
+			logger->error ("Send error: {}", e.what());
+			logger->info("To reset");
+			reset();
+		}
 	}
 
 //	sock.send(boost::asio::buffer(msg));
@@ -270,13 +266,6 @@ void asiotenhoufsm<NetType>::heloState(const boost::system::error_code& e, std::
 			send (authMsg + StateReturnType::SplitToken + pxrMsg);
 
 			RegRcv(authState);
-
-//			sock.async_receive(
-//					boost::asio::buffer(rcvBuf),
-//					boost::bind(&asiotenhoufsm::authState, shared_from_this(),
-//							boost::asio::placeholders::error,
-//							boost::asio::placeholders::bytes_transferred())
-//			);
 		} else if (msg.find("GO") != S::npos) {
 			logger->info("log file: {}", msg);
 			//TODO: It is reconnect
@@ -284,6 +273,10 @@ void asiotenhoufsm<NetType>::heloState(const boost::system::error_code& e, std::
 			send(G::GenNextReadyMsg());
 			send(G::GenNextReadyMsg());
 			RegRcv(joinState);
+		} else if (msg.find("ERR") != S::npos) {
+			//TODO: To deal with the error, how if one client invalid in process running
+			logger->error ("Invalid client id: {}", msg);
+			reset(); //Retry, set end of game at reset(), distinguish cancel and normal ending
 		} else {
 			this->logUnexpMsg("heloState", msg);
 		}
@@ -308,7 +301,7 @@ void asiotenhoufsm<NetType>::authState(const ErrorCode &e, std::size_t len) {
 			RegRcv(authState);
 		} else if (msg.find("GO") != S::npos) {
 			logger->info("Reinit msg: {}", msg);
-			//TODO: It is reconnect
+			//TODO: It is reinit
 			send(G::GenGoMsg());
 			send(G::GenNextReadyMsg());
 			send(G::GenNextReadyMsg());
@@ -383,58 +376,6 @@ void asiotenhoufsm<NetType>::joinState(const ErrorCode &e, std::size_t len) {
 				RegRcv(joinState);
 			}
 		}
-
-
-
-//		if (msgs.size() == 1) {
-//			if (msg.find("GO") != S::npos) {
-//				RegRcv(joinState);
-//			} else if (msg.find("LN") != S::npos) {
-//				send(G::GenPxrMsg());
-//				RegRcv(joinState);
-//			} else if (msg.find("UN") != S::npos) {
-//				RegRcv(joinState);
-//			} else if (msg.find("TAIKYOKU") != S::npos) {
-//				send(G::GenGoMsg());
-//				send(G::GenNextReadyMsg());
-//				//+ StateReturnType::SplitToken + G::GenNextReadyMsg() + StateReturnType::SplitToken + G::GenNextReadyMsg());
-//				RegRcv(readyState);
-//			} else if (msg.find("REJOIN") != S::npos) {
-//				send(G::GenRejoinMsg(msg));
-//				RegRcv(joinState);
-//			} else {
-//				logUnexpMsg(msg);
-//			}
-//		} else {
-//			for (int i = 0; i < msgs.size(); i ++) {
-//				if (msgs[i].find("TAIKYOKU") != S::npos) {
-////					send(G::GenGoMsg());
-////					send(G::GenNextReadyMsg());
-////					send(G::GenNextReadyMsg());
-//					// + StateReturnType::SplitToken + G::GenNextReadyMsg() + StateReturnType::SplitToken + G::GenNextReadyMsg());
-//					RegRcv(readyState);
-//					return;
-//				}
-//
-//
-//
-//				if (msgs[i].find("LN") != S::npos) {
-//					send(G::GenPxrMsg());
-//				} else if(msgs[i].find("UN") != S::npos) {
-////					send(G::GenNextReadyMsg());
-//				} else if (msgs[i].find("GO") != S::npos) {
-////					send(G::GenGoMsg());
-//					send(G::GenGoMsg());
-//					send(G::GenNextReadyMsg());
-//					send(G::GenNextReadyMsg());
-//				} else if (msgs[i].find("REJOIN") != S::npos) {
-//					send (G::GenRejoinMsg(msg));
-//				} else {
-//					logger->info("Pass msg: {}", msgs[i]);
-//				}
-//			}
-//			RegRcv(joinState);
-//		}
 	} else {
 		logNetworkErr("joinState", e.message());
 		if (e == boost::asio::error::eof) {
@@ -450,7 +391,6 @@ void asiotenhoufsm<NetType>::readyState(const ErrorCode &e, std::size_t len) {
 		logger->debug("ready received msg: {}", msg);
 
 		if (msg.find("INIT") != S::npos) {
-//			reset();
 			processGameMsg(msg);
 
 			RegRcv(gameState);
@@ -506,31 +446,6 @@ void asiotenhoufsm<NetType>::gameEndState(const ErrorCode &e, std::size_t len) {
 			RegRcv(gameEndState);
 		}
 	}
-//	if ((!e) || (e == boost::asio::error::message_size)) {
-//		S msg (rcvBuf.data(), len);
-//		logger->debug("gameEnd received msg: {}", msg);
-//
-//		if (msg.find("PROF") != S::npos) {
-//			gameEnd2NextTimer.cancel();
-//
-//			sceneEnd2StartTimer.expires_from_now(boost::posix_time::seconds(SceneEnd2StartTimeout));
-//			sceneEnd2StartTimer.async_wait(boost::bind(&asiotenhoufsm<NetType>::sceneEnd2StartTimerHandle, this->shared_from_this(),
-//					boost::asio::placeholders::error));
-//			RegRcv(sceneEndState);
-//		} else if (P::IsGameEnd(msg)) {
-//			gameEnd2NextTimer.cancel();
-//
-//			processGameMsg(msg);
-//			send(G::GenNextReadyMsg());
-//
-//			RegRcv(gameEndState);
-//			gameEnd2NextTimer.expires_from_now(boost::posix_time::seconds(GameEnd2NextTimeout));
-//			gameEnd2NextTimer.async_wait(boost::bind(&asiotenhoufsm<NetType>::gameEnd2NextTimerHandle, this->shared_from_this(),
-//					boost::asio::placeholders::error));
-//		} else {
-//			logUnexpMsg("gameEnd", msg);
-//		}
-//	}
 	else {
 		logNetworkErr("gameEnd", e.message());
 	}
@@ -574,7 +489,7 @@ void asiotenhoufsm<NetType>::gameState(const ErrorCode &e, std::size_t len) {
 
 			for (int i = 0; i < msgs.size(); i ++) {
 				if (U::IsTerminalMsg(msgs[i])) {
-					processGameMsg(msgs[i]); //TODO: Seemed should get reward from the message
+					processGameMsg(msgs[i]);
 				}
 			}
 			sceneEnd2StartTimer.expires_from_now(boost::posix_time::seconds(SceneEnd2StartTimeout));
@@ -598,47 +513,10 @@ void asiotenhoufsm<NetType>::gameState(const ErrorCode &e, std::size_t len) {
 			}
 		}
 	}
-//	if ((!e) || (e == boost::asio::error::message_size)) {
-//		S msg (rcvBuf.data(), len);
-//		logger->debug("game received msg: {}", msg);
-//
-//		if (msg.find("PROF") != S::npos) {
-//			auto msgs = splitRcvMsg(msg);
-//
-//			if (msgs.size() == 1) {
-//				RegRcv(sceneEndState);
-//				return;
-//			} else {
-//				for (int i = 0; i < msgs.size(); i ++) {
-//					if (U::IsTerminalMsg(msgs[i])) {
-//						processGameMsg(msgs[i]); //TODO: Seemed should get reward from the message
-//					}
-//				}
-//
-//				sceneEnd2StartTimer.expires_from_now(boost::posix_time::seconds(SceneEnd2StartTimeout));
-//				sceneEnd2StartTimer.async_wait(boost::bind(&asiotenhoufsm::sceneEnd2StartTimerHandle, this->shared_from_this(),
-//									boost::asio::placeholders::error));
-//				RegRcv(sceneEndState);
-//				//TODO: Should return?
-//				return;
-//			}
-//		}
-//
-//		bool isTerminal = U::IsTerminalMsg(msg);
-//		processGameMsg(msg); //TODO: Duplicated message procession
-//
-//		if(isTerminal) {
-//			//TODO: Why turn to readyState?
-//			send(G::GenNextReadyMsg());
-//			RegRcv(readyState);
-//		} else {
-//			RegRcv(gameState);
-//		}
-//	}
 	else {
 		logNetworkErr("gameState", e.message());
 		if (e == boost::asio::error::eof) {
-			RegRcv(gameState);
+			reset();
 		}
 	}
 }
@@ -669,22 +547,6 @@ void asiotenhoufsm<NetType>::sceneEndState(const ErrorCode &e, std::size_t len) 
 		sceneEnd2StartTimer.async_wait(boost::bind(&asiotenhoufsm::sceneEnd2StartTimerHandle, this->shared_from_this(),
 				boost::asio::placeholders::error));
 		RegRcv(sceneEndState);
-//
-//
-//		if (U::IsTerminalMsg(msg)) {
-//			sceneEnd2StartTimer.cancel();
-//
-//			processGameMsg(msg);
-//			send(G::GenNextReadyMsg());
-//
-//			sceneEnd2StartTimer.expires_from_now(boost::posix_time::seconds(SceneEnd2StartTimeout));
-//			sceneEnd2StartTimer.async_wait(boost::bind(&asiotenhoufsm::sceneEnd2StartTimerHandle, this->shared_from_this(),
-//					boost::asio::placeholders::error));
-//			RegRcv(sceneEndState);
-//
-//		} else {
-//			logUnexpMsg("sceneEndState", msg);
-//		}
 	} else {
 		logNetworkErr("sceneEndState", e.message());
 	}
@@ -775,14 +637,23 @@ bool asiotenhoufsm<NetType>::start() {
 		sock.connect(serverP);
 		logger->info("Connected to {}, {}", serverP.address().to_string(), serverP.port());
 
-//		send (G::GenHeloMsg("NoName"));
 		send(G::GenHeloMsg(name));
-		RegRcv(heloState);
 	} catch (std::exception& e) {
 		logger->error("Failed to start connection: {}", e.what());
-		return false;
+		//TODO: to resart
+		restartCount ++;
+		if (restartCount >= ReConnTrial) {
+			logger->error("Broken network");
+			throw e;
+		} else {
+			int sleepTime = rand() % ReConnThreshold;
+			sleep(sleepTime);
+			logger->warn("To restart");
+			start();
+		}
 	}
 
+	RegRcv(heloState);
 	kaTimer.expires_from_now(boost::posix_time::seconds(KATimeout));
 	kaTimer.async_wait(boost::bind(&asiotenhoufsm::kaTimerHandle, this->shared_from_this(),
 						boost::asio::placeholders::error));
@@ -806,9 +677,5 @@ void asiotenhoufsm<NetType>::reset() {
 
 	start();
 }
-
-
-
-
 
 #endif /* INCLUDE_TENHOUCLIENT_ASIOTENHOUFSM_HPP_ */

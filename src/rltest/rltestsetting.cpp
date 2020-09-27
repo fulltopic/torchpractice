@@ -11,8 +11,8 @@
 namespace rltest {
 
 const int RlSetting::ProxyNum = 3;
-const int RlSetting::BatchSize = 16;
-const int RlSetting::UpdateThreshold = 8; //TODO: dirty data
+const int RlSetting::BatchSize = 8;
+const int RlSetting::UpdateThreshold = 4; //TODO: dirty data
 
 const float RlSetting::ReturnGamma = 0.9;
 

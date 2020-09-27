@@ -21,10 +21,10 @@ bool Utils::CompTensorBySeqLen (const torch::Tensor& t0, const torch::Tensor& t1
 //TODO: Normalize rewards
 Tensor Utils::BasicReturnCalc(const Tensor rewardTensor, const Tensor labels, const int seqLen, float gamma) {
 	float reward = rewardTensor.item<float>();
-	long* labelPtr = labels.data<long>();
+	long* labelPtr = labels.data_ptr<long>();
 
 	Tensor returnTensor = torch::zeros({seqLen, 1});
-	float* returnPtr = returnTensor.data<float>();
+	float* returnPtr = returnTensor.data_ptr<float>();
 
 	float returnValue = reward;
 	for (int i = seqLen - 1; i >= 0; i --) {

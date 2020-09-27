@@ -726,6 +726,21 @@ static void testZeros () {
 	cout << "t1 " << (void*)(t1.unsafeGetTensorImpl()) << endl;
 }
 
+static void testPad () {
+	const int realSize = 28;
+	const int expSize = 27;
+	Tensor t = torch::zeros({2, realSize});
+	float* tData = t.data_ptr<float>();
+	for (int i = 0; i < t.numel(); i ++) {
+		tData[i] = i;
+	}
+	cout << "Before pad " << endl;
+	cout << t << endl;
+
+	t = torch::constant_pad_nd(t, {0, (expSize - realSize)});
+	cout << "After pad" << endl;
+	cout << t << endl;
+}
 int main(int argc, char** argv) {
 //	testClone();
 //	testCloneable();
@@ -743,7 +758,9 @@ int main(int argc, char** argv) {
 //	testDataQThread();
 
 //	testVector();
-	testRefFunc();
+//	testRefFunc();
+
+	testPad();
 
 //	testZeros();
 }

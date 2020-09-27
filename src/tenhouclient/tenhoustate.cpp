@@ -122,7 +122,7 @@ void BaseState::reset() {
 	myTiles.assign(myTiles.size(), false);
 //	innerState = innerState.fill_(0);
 	innerState.fill_(0);
-	logger->info("The impl of innerState: {}", (void*)(innerState.unsafeGetTensorImpl()));
+//	logger->info("The impl of innerState: {}", (void*)(innerState.unsafeGetTensorImpl()));
 //	innerState = torch::zeros({h, w});
 	doras.clear();
 

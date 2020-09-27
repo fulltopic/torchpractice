@@ -92,7 +92,7 @@ private:
 	torch::Tensor gruHState;
 	int step;
 	int gameSeq;
-//	StateStoreType<2> storage;
+
 	//TODO: Should hold a storage data in construction?
 	StateDataType stateData;
 
@@ -250,7 +250,7 @@ void NetProxy<NetType>::reset() {
 //	net->reset();
 
 	initGru(std::integral_constant<bool, HasCreateHState<NetType>::Has>());
-
+	stateData = StateDataType();
 }
 
 

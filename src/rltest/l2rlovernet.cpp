@@ -151,7 +151,7 @@ Tensor GRUL2OverNet::inputPreprocess(Tensor input) {
 //inputs sorted
 //TODO: Caution: inputs are re-ordered
 vector<Tensor> GRUL2OverNet::forward(vector<Tensor> inputs, bool isTrain) {
-	vector<int> seqLens(inputs.size(), 0);
+	vector<int64_t> seqLens(inputs.size(), 0);
 	int total = 0;
 	for (int i = 0; i < inputs.size(); i ++) {
 		seqLens[i] = inputs[i].size(0);
@@ -159,7 +159,7 @@ vector<Tensor> GRUL2OverNet::forward(vector<Tensor> inputs, bool isTrain) {
 
 		inputs[i] = inputPreprocess(inputs[i]);
 		inputs[i] = inputs[i].view({inputs[i].size(0), inputs[i].size(1) * inputs[i].size(2)}); //TODO: -1 is OK?
-		inputs[i] = torch::constant_pad_nd(inputs[i], {0, 0, 0, (seqLen - seqLens[i])});
+		inputs[i] = torch::constant_pad_nd(inputs[i], {0, 0, 0, (seqLen - seqLens[i])}); //TODO: remove head or end is better?
 		seqLens[i] = std::min(seqLens[i], seqLen);
 	}
 	Logger::GetLogger()->info("total input {}", total);
@@ -391,12 +391,20 @@ Tensor GRUL2OverNet::getLoss(vector<vector<Tensor>> inputTensors){
 	vector<Tensor> returnTensors;
 	for (int i = 0; i < rewards.size(); i ++) {
 		Tensor returnTensor = rltest::Utils::BasicReturnCalc(rewards[i], actions[i], actions[i].size(0), RlSetting::ReturnGamma);
+
+		returnTensor = torch::constant_pad_nd(returnTensor, {0, 0, 0, std::min(seqLen, actions[i].size(0)) - actions[i].size(0)});
+		actions[i] = torch::constant_pad_nd(actions[i], {0, 0, 0, std::min(seqLen, actions[i].size(0)) - actions[i].size(0)});
+		labels[i] = torch::constant_pad_nd(labels[i], {0, std::min(seqLen, actions[i].size(0)) - actions[i].size(0)});
+
+		cout << "action len: " << actions[i].sizes() << endl;
+		cout << "return len: " << returnTensor.sizes() << endl;
 		returnTensors.push_back(returnTensor);
 	}
 	cout << "return sizes: " << returnTensors[0].sizes() << endl;
 
 	std::stable_sort(inputs.begin(), inputs.end(), Utils::CompTensorBySeqLen);
 	std::stable_sort(actions.begin(), actions.end(), Utils::CompTensorBySeqLen);
+	std::stable_sort(labels.begin(), labels.end(), Utils::CompTensorBySeqLen);
 	std::stable_sort(returnTensors.begin(), returnTensors.end(), Utils::CompTensorBySeqLen);
 
 	Tensor action = torch::cat(actions, 0);

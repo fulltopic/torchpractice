@@ -23,6 +23,9 @@
 #include "lmdbtools/LmdbDataDefs.h"
 #include "lmdbtools/Lmdb2RowDataDefs.h"
 
+#include "utils/logger.h"
+#include "spdlog/spdlog.h"
+
 using std::cout;
 using std::endl;
 using std::vector;
@@ -30,6 +33,9 @@ using std::vector;
 using torch::Tensor;
 
 static void startWorker() {
+	spdlog::set_level(spdlog::level::info);
+	Logger::GetLogger()->set_pattern("[%t][%l]: %v");
+
 	int seqLen = 27;
 	const std::string modelPath = "/home/zf/workspaces/workspace_cpp/aws/GRU2L2048MaskNet_140000_0.002000_1593719779.pt";
 

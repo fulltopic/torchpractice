@@ -16,14 +16,8 @@
 //TODO: Move settings out of static function
 std::shared_ptr<spdlog::logger> Logger::GetLogger() {
 	static auto console = spdlog::stdout_color_mt("console");
-	static bool setPattern = false;
+//	static bool setPattern = false;
 	static auto logger = spdlog::get("console");
-
-	if (!setPattern) {
-		setPattern = true;
-		logger->set_pattern("[%t][%l]: %v");
-		spdlog::set_level(spdlog::level::info);
-	}
 
 	return logger;
 //	return spdlog::get("console");

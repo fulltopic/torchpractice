@@ -28,7 +28,7 @@ protected:
 
 	torch::nn::Linear fcValue;
 
-	int seqLen;
+	int64_t seqLen;
 
 
 //protected:
