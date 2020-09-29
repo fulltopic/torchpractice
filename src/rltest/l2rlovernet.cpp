@@ -31,6 +31,7 @@
 
 #include "rltest/l2rlovernet.h"
 #include "utils/logger.h"
+#include "utils/storedata.h"
 
 namespace rltest {
 using Tensor = torch::Tensor;
@@ -113,12 +114,26 @@ void GRUL2OverNet::loadL2Model(const std::string modelPath) {
 	inChive.load_from(modelPath);
 	this->load(inChive);
 	} catch (std::exception& e) {
-		cout << "Failed to load as: " << e.what() << endl;
+		Logger::GetLogger()->error("Failed to load as: {}", e.what());
 	}
 
 	register_module("fcValue", fcValue);
 
 	Logger::GetLogger()->info("Loaded l2 model");
+}
+
+void GRUL2OverNet::loadModel(const std::string modelPath) {
+	Logger::GetLogger()->info("To load overall model from {}", modelPath);
+
+	try {
+		torch::serialize::InputArchive inChive;
+		inChive.load_from(modelPath);
+		this->load(inChive);
+		Logger::GetLogger()->info("Loaded overall model");
+	} catch (std::exception& e) {
+		//TODO: Should recover?
+		Logger::GetLogger()->error("Failed to load as: {}", e.what());
+	}
 }
 
 
@@ -139,7 +154,11 @@ GRUL2OverNet::GRUL2OverNet(int inSeqLen):
 GRUL2OverNet::GRUL2OverNet(int inSeqLen, bool isL2Model, const std::string modelPath):
 		GRUL2OverNet(inSeqLen)
 {
-	loadL2Model(modelPath);
+	if (isL2Model) {
+		loadL2Model(modelPath);
+	} else {
+		loadModel(modelPath);
+	}
 }
 
 
@@ -396,8 +415,8 @@ Tensor GRUL2OverNet::getLoss(vector<vector<Tensor>> inputTensors){
 		actions[i] = torch::constant_pad_nd(actions[i], {0, 0, 0, std::min(seqLen, actions[i].size(0)) - actions[i].size(0)});
 		labels[i] = torch::constant_pad_nd(labels[i], {0, std::min(seqLen, actions[i].size(0)) - actions[i].size(0)});
 
-		cout << "action len: " << actions[i].sizes() << endl;
-		cout << "return len: " << returnTensor.sizes() << endl;
+//		cout << "action len: " << actions[i].sizes() << endl;
+//		cout << "return len: " << returnTensor.sizes() << endl;
 		returnTensors.push_back(returnTensor);
 	}
 	cout << "return sizes: " << returnTensors[0].sizes() << endl;
@@ -440,6 +459,10 @@ Tensor GRUL2OverNet::getLoss(vector<vector<Tensor>> inputTensors){
 	Tensor loss = valueLoss + actionLoss - entropy * 1e-4;
 
 	return loss;
+}
+
+std::string GRUL2OverNet::GetName() {
+	return "GRUL2OverNet";
 }
 }
 

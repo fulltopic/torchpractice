@@ -26,7 +26,7 @@ class FilePolicy: public TenhouPolicy {
 private:
 	const std::string path;
 	std::vector<FilePolicyMsg> msgs;
-	std::shared_ptr<spdlog::logger> logger;
+	std::shared_ptr<spdlog::logger>& logger;
 	int index;
 
 public:

@@ -139,7 +139,7 @@ void DirPolicy::reset() {
 }
 
 int DirPolicy::getAction(Tensor values, const vector<int>& candidates) {
-	static auto logger = Logger::GetLogger();
+//	static auto logger = Logger::GetLogger();
 
 	for (; index < msgs.size(); index ++) {
 		if (msgs[index].type == 0) {

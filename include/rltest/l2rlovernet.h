@@ -65,6 +65,7 @@ public:
 
 	void initParams();
 	void loadL2Model(const std::string modelPath);
+	void loadModel(const std::string modelPath);
 
 	inline int getSeqLen() const { return seqLen; }
 
@@ -77,6 +78,7 @@ public:
 	void cloneFrom(const GRUL2OverNet& origNet);
 	torch::Tensor getLoss(std::vector<std::vector<torch::Tensor>> inputTensors);
 
+	static std::string GetName();
 };
 }
 

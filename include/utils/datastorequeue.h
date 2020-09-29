@@ -14,6 +14,8 @@
 #include <vector>
 #include <torch/torch.h>
 
+#include "storedata.h"
+
 //using StoreDataType = std::vector<std::vector<torch::Tensor>>;
 class DataStoreQ {
 private:
@@ -23,7 +25,8 @@ private:
 
 public:
 	//TODO: Remove magic data
-	static R1WmQueue<std::vector<std::vector<torch::Tensor>>, 64>&
+//	static R1WmQueue<std::vector<std::vector<torch::Tensor>>, 64>&
+	static R1WmQueue<std::unique_ptr<StateDataType>, 64>&
 	GetDataQ();
 };
 

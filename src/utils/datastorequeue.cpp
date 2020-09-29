@@ -9,9 +9,8 @@
 #include "utils/datastorequeue.h"
 
 
-R1WmQueue<std::vector<std::vector<torch::Tensor>>, 64>&
-	DataStoreQ::GetDataQ() {
-	static R1WmQueue<std::vector<std::vector<torch::Tensor>>, 64> queue;
+R1WmQueue<std::unique_ptr<StateDataType>, 64>&	DataStoreQ::GetDataQ() {
+	static R1WmQueue<std::unique_ptr<StateDataType>, 64> queue;
 
 	return queue;
 }

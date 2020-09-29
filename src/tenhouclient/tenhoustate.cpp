@@ -284,7 +284,7 @@ vector<int> BaseState::getCandidates(int type, int raw) {
 		}
 
 		if (canKan(P::Raw2Tile(raw), tiles)) {
-			Logger::GetLogger()->warn("Could kan tile {}", raw);
+			logger->warn("Could kan tile {}", raw);
 		}
 		return tiles;
 	} else if (type == StealType::ReachType) {
@@ -587,7 +587,7 @@ vector<int> BaseState::getReachTiles(int raw) {
 }
 
 vector<int> BaseState::getTiles(int type, int raw) {
-	static auto logger = Logger::GetLogger();
+//	static auto logger = Logger::GetLogger();
 
 //	if ((type >= 0) && (type < TileNum)) {
 //		logger->debug("To get drop tiles for {}", type);

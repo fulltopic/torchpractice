@@ -42,6 +42,8 @@ class TrainObj {
 private:
 	int curIndex;
 	int lastIndex;
+	uint32_t epochNum;
+	uint32_t totalSampleNum;
 	std::shared_ptr<spdlog::logger> logger;
 
 public:
@@ -61,7 +63,7 @@ public:
 //			nets.push_back(cpyNet);
 //		}
 //	}
-	explicit TrainObj(): curIndex(0), lastIndex(1), logger(Logger::GetLogger()) {
+	explicit TrainObj(): curIndex(0), lastIndex(1), epochNum(0), totalSampleNum(0), logger(Logger::GetLogger()) {
 	}
 
 	//TODO: Other constructors
@@ -69,7 +71,7 @@ public:
 
 	template<typename ...NetArgs>
 	void createNets(NetArgs&&... args) {
-		nets.push_back(std::shared_ptr<NetType>(new NetType(args...)));
+		nets.push_back(std::move(std::shared_ptr<NetType>(new NetType(args...))));
 		logger->warn("Create original net");
 
 		for (int i = 1; i < Cap; i ++) {
@@ -98,11 +100,38 @@ public:
 	}
 
 	//network that is being updated
-	std::shared_ptr<NetType> getTrainingNet() {
+	std::shared_ptr<NetType>& getTrainingNet() {
 		return nets[curIndex];
 	}
 
-	void updateNet(std::vector<std::vector<torch::Tensor>> inputs) {
+	void saveNet() {
+		if (epochNum < rltest::RlSetting::SaveEpochThreshold) {
+			return;
+		}
+
+		auto saveTime = std::chrono::system_clock::now().time_since_epoch();
+		auto saveSecond = std::chrono::duration_cast<std::chrono::seconds>(saveTime).count();
+		std::string fileName = NetType::GetName() + "_"
+				+ std::to_string(epochNum) + "_"
+				+ std::to_string(totalSampleNum) + "_"
+				+ std::to_string(saveSecond);
+		std::string modelPath = rltest::RlSetting::ModelDir + "/" + fileName + ".pt";
+		logger->info("To save model into {}", modelPath);
+
+		epochNum = 0;
+		totalSampleNum = 0;
+
+		torch::serialize::OutputArchive output_archive;
+		try {
+			getTrainingNet()->save(output_archive);
+			output_archive.save_to(modelPath);
+			logger->info("Model saved into {}", modelPath);
+		} catch (std::exception& e) {
+			logger->error("Failed to save model as: {}", e.what());
+		}
+	}
+
+	void updateNet(std::vector<std::vector<torch::Tensor>> inputs, const int sampleNum) {
 		logger->warn("Get loss of nets {}", curIndex);
 		torch::Tensor loss = nets[curIndex]->getLoss(inputs);
 
@@ -112,45 +141,12 @@ public:
 		optimizers[curIndex]->step();
 
 		logger->warn("Worker set Net {} updated", curIndex);
-	}
 
-//	void cloneOpt(OptType& opt0, OptType& opt1, NetType& net0, NetType& net1) {
-//		auto namedParams0 = net0->named_parameters(true);
-//		auto namedParams1 = net1->named_parameters(true);
-//		auto& states0 = opt0.state();
-//		auto& states1 = opt1.state();
-//		states1.clear();
-//
-//		for (auto ite = namedParams0.begin(); ite != namedParams0.end(); ite ++) {
-//			auto key = ite->key();
-//			logger->info("To deal with param {}", key);
-//
-//			torch::Tensor value0 = ite->value();
-//			auto value0Str = c10::guts::to_string(value0.unsafeGetTensorImpl());
-//
-//			if (states0.find(value0Str) == states0.end()) {
-//				logger->info("No state defined for param {}", key);
-//				continue;
-//			}
-//
-//			auto& currState = states0.at(value0Str);
-//			auto stateClone = currState->clone();
-//			torch::Tensor value1 = namedParams1[key];
-//			auto value1Str = c10::guts::to_string(value1.unsafeGetTensorImpl());
-//			states1[value1Str] = std::move(stateClone);
-//		}
-//	}
-//	void cloneOpt(OptType& optFrom, OptType& optTo) {
-//		std::ostringstream buf;
-//		torch::serialize::OutputArchive output_archive;
-//		optFrom.save(output_archive);
-//		output_archive.save_to(buf);
-//
-//		std::istringstream inStream(buf.str());
-//		torch::serialize::InputArchive input_archive;
-//		input_archive.load_from(inStream);
-//		optTo.load(input_archive);
-//	}
+		epochNum ++;
+		totalSampleNum += sampleNum;
+
+		saveNet();
+	}
 
 	void switchNet() {
 		auto copy = nets[curIndex]->clone();
@@ -202,7 +198,8 @@ private:
 	//TODO: inject innstate and policy
 	std::vector<std::shared_ptr<NetProxy<NetType>>> netProxies;
 
-	std::queue<StoreDataType> dataQ;
+//	std::queue<StoreDataType> dataQ;
+	std::queue<std::unique_ptr<StateDataType>> dataQ; //Buffer, for tmp peak
 
 	TrainObj<NetType, OptType, OptOptionType>& trainingProxy;
 
@@ -256,10 +253,11 @@ bool RlTrainWorker<NetType, OptType, OptOptionType>::trainingNet() {
 	std::vector<torch::Tensor> rewards;
 
 	while(!dataQ.empty()) {
-		auto datas = dataQ.front();
+		std::unique_ptr<StateDataType> storeData = std::move(dataQ.front());
 		dataQ.pop();
+		auto datas = storeData->getData();
 
-		std::vector<torch::Tensor> inputData = datas[rltest::InputIndex];
+		std::vector<torch::Tensor> inputData = datas[InputIndex];
 		if (inputData.size() == 0) {
 			logger->warn("popped invalid data");
 			continue;
@@ -267,15 +265,15 @@ bool RlTrainWorker<NetType, OptType, OptOptionType>::trainingNet() {
 		torch::Tensor input = torch::cat(inputData, 0); // {seqLen, 5, 72}
 		inputs.push_back(input);
 
-		std::vector<torch::Tensor> actionData = datas[rltest::ActionIndex];
+		std::vector<torch::Tensor> actionData = datas[ActionIndex];
 		torch::Tensor action = torch::cat(actionData, 0);
 		actions.push_back(action);
 
-		std::vector<torch::Tensor> labelData = datas[rltest::LabelIndex];
+		std::vector<torch::Tensor> labelData = datas[LabelIndex];
 		torch::Tensor label = torch::stack(labelData, 0);
 		labels.push_back(label);
 
-		torch::Tensor reward = datas[rltest::RewardIndex][0];
+		torch::Tensor reward = datas[RewardIndex][0];
 		rewards.push_back(reward);
 	}
 	if (rewards.size() == 0) {
@@ -284,7 +282,7 @@ bool RlTrainWorker<NetType, OptType, OptOptionType>::trainingNet() {
 	}
 
 	//TODO: actions or labels?
-	trainingProxy.updateNet({inputs, {}, labels, actions, rewards});
+	trainingProxy.updateNet({inputs, {}, labels, actions, rewards}, inputs.size());
 
 	trainEpoch ++;
 	logger->warn("Net updated {} epoch", trainEpoch);
@@ -300,7 +298,6 @@ bool RlTrainWorker<NetType, OptType, OptOptionType>::trainingNet() {
 	return false;
 }
 
-//TODO: Make dataQ atomic
 template <class NetType, class OptType, class OptOptionType>
 void RlTrainWorker<NetType, OptType, OptOptionType>::trainingWork() {
 //	for (int i = 0; i < netProxies.size(); i ++) {
@@ -313,8 +310,8 @@ void RlTrainWorker<NetType, OptType, OptOptionType>::trainingWork() {
 //		dataQ.push(std::move(data));
 //	}
 	while (!DataStoreQ::GetDataQ().isEmpty()) {
-		auto data = DataStoreQ::GetDataQ().pop();
-		if (data[0].size() == 0) {
+		std::unique_ptr<StateDataType> data = DataStoreQ::GetDataQ().pop();
+		if (data->trainStates.size() == 0) {
 			logger->warn("An invalid data ");
 			continue;
 		}
@@ -322,8 +319,7 @@ void RlTrainWorker<NetType, OptType, OptOptionType>::trainingWork() {
 		dataQ.push(std::move(data));
 	}
 
-	bool updated = trainingNet();
-	if (!updated) {
+	if (!trainingNet()) {
 		return;
 	}
 
@@ -350,7 +346,7 @@ void RlTrainWorker<NetType, OptType, OptOptionType>::trainingWork() {
 	}
 	logger->warn("Cleared all data produced by previous network ");
 
-	auto newNet = trainingProxy.getTrainingNet();
+	auto& newNet = trainingProxy.getTrainingNet();
 	//update all proxies
 	for (int i = 0; i < netProxies.size(); i ++) {
 		netProxies[i]->setRunning(newNet);
@@ -405,7 +401,7 @@ void RlTrainWorker<NetType, OptType, OptOptionType>::start() {
 //			static_cast<std::size_t (boost::asio::io_context::*)()>(&boost::asio::io_context::run), &io);
 
 	std::vector<std::unique_ptr<std::thread>> ioThreads;
-	for (int i = 0; i < 2; i ++) {
+	for (int i = 0; i < rltest::RlSetting::ThreadNum; i ++) {
 		ioThreads.push_back(std::make_unique<std::thread>(
 				static_cast<std::size_t (boost::asio::io_context::*)()>(&boost::asio::io_context::run), &io));
 	}

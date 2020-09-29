@@ -33,7 +33,7 @@ public:
 	//TODO: other constructors;
 
 	bool push(DataType&& data);
-	DataType pop(); //TODO: Could it be DataType&&?
+	DataType&& pop(); //TODO: Could it be DataType&&?
 
 	bool isEmpty();
 	uint32_t size();
@@ -70,7 +70,7 @@ bool R1WmQueue<DataType, Capacity>::push(DataType&& data) {
 	}
 
 	uint32_t index = seq % Capacity;
-	datas[index] = data;
+	datas[index] = std::move(data);
 	while ((writeSeq + 1) != seq) {
 		sleep(1);
 	}
@@ -80,12 +80,13 @@ bool R1WmQueue<DataType, Capacity>::push(DataType&& data) {
 }
 
 template<typename DataType, int Capacity>
-DataType R1WmQueue<DataType, Capacity>::pop() {
+DataType&& R1WmQueue<DataType, Capacity>::pop() {
 	uint32_t index = readSeq % Capacity;
-	DataType data = datas[index];
-
 	readSeq ++;
-	return data;
+//	DataType data = std::move(datas[index]);
+
+//	return data;
+	return std::move(datas[index]);
 }
 
 template<typename DataType, int Capacity>

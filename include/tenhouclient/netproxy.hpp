@@ -23,6 +23,7 @@
 
 #include "utils/logger.h"
 #include "utils/datastorequeue.h"
+#include "utils/storedata.h"
 #include "policy/tenhoupolicy.h"
 
 #include "tenhouclient/tenhoustate.h"
@@ -42,23 +43,23 @@ struct HasCreateHState {
 };
 
 //TODO: unique_ptr better?
-struct StateDataType {
-	using ItemDataType = std::vector<torch::Tensor>;
-
-	ItemDataType trainStates;
-	ItemDataType trainHStates;
-	ItemDataType trainLabels; //action executed
-	ItemDataType trainActions; //action calculated
-	float reward;
-
-	StateDataType(): reward(0.0f) {
-	}
-	//Others default
-
-	std::vector<std::vector<torch::Tensor>> getData() {
-		return {trainStates, trainHStates, trainLabels, trainActions, {torch::tensor(reward)}};
-	}
-};
+//struct StateDataType {
+//	using ItemDataType = std::vector<torch::Tensor>;
+//
+//	ItemDataType trainStates;
+//	ItemDataType trainHStates;
+//	ItemDataType trainLabels; //action executed
+//	ItemDataType trainActions; //action calculated
+//	float reward;
+//
+//	StateDataType(): reward(0.0f) {
+//	}
+//	//Others default
+//
+//	std::vector<std::vector<torch::Tensor>> getData() {
+//		return {trainStates, trainHStates, trainLabels, trainActions, {torch::tensor(reward)}};
+//	}
+//};
 
 
 template <typename NetType>
@@ -94,7 +95,8 @@ private:
 	int gameSeq;
 
 	//TODO: Should hold a storage data in construction?
-	StateDataType stateData;
+	std::unique_ptr<StateDataType> stateData;
+//	StateDataType stateData;
 
 	//RandomNet net;
 	TenhouPolicy& policy;
@@ -166,12 +168,12 @@ using G = TenhouMsgGenerator;
 
 template<class NetType>
 void NetProxy<NetType>::updateLabelStore(int label) {
-	stateData.trainLabels.push_back(torch::tensor(label));
+	stateData->trainLabels.push_back(torch::tensor(label));
 }
 
 template<class NetType>
 void NetProxy<NetType>::updateReward(float reward) {
-	stateData.reward += reward;
+	stateData->reward += reward;
 }
 
 //template <class NetType>
@@ -210,15 +212,15 @@ torch::Tensor NetProxy<NetType>::updateNet(int indType) {
 		logger->debug("updateNet gru");
 		torch::Tensor state = innerState.getState(indType);
 
-		stateData.trainStates.push_back(state.detach().clone());
-		stateData.trainHStates.push_back(gruHState.detach().clone());
+		stateData->trainStates.push_back(state.detach().clone());
+		stateData->trainHStates.push_back(gruHState.detach().clone());
 
 		std::vector<torch::Tensor> netOutput = net->forward(std::vector{state, gruHState, torch::tensor(step)});
 		// get max index
 		torch::Tensor actProb = netOutput[0];
 		actProb = actProb.clamp(1.21e-7, 1.0f - 1.21e-7);
 		torch::Tensor action = actProb.multinomial(1, false);
-		stateData.trainActions.push_back(action);
+		stateData->trainActions.push_back(action);
 
 		gruHState = netOutput[1];
 		step ++;
@@ -227,14 +229,14 @@ torch::Tensor NetProxy<NetType>::updateNet(int indType) {
 		logger->debug("updateNet non gru");
 		torch::Tensor state = innerState.getState(indType);
 
-		stateData.trainStates.push_back(state.detach().clone()); //TODO: Is detach necessary?
+		stateData->trainStates.push_back(state.detach().clone()); //TODO: Is detach necessary?
 
 		std::vector<torch::Tensor> netOutput = net->forward(std::vector{state});
 
 		torch::Tensor actProb = netOutput[0];
 		actProb = actProb.clamp(1.21e-7, 1.0f - 1.21e-7);
 		torch::Tensor action = actProb.multinomial(1, false);
-		stateData.trainActions.push_back(action);
+		stateData->trainActions.push_back(action);
 
 		return netOutput[0];
 	}
@@ -250,7 +252,7 @@ void NetProxy<NetType>::reset() {
 //	net->reset();
 
 	initGru(std::integral_constant<bool, HasCreateHState<NetType>::Has>());
-	stateData = StateDataType();
+	stateData = std::make_unique<StateDataType>();
 }
 
 
@@ -753,10 +755,10 @@ void NetProxy<NetType>::setRunning(std::shared_ptr<NetType> newNet) {
 template <class NetType>
 void NetProxy<NetType>::setGameEnd() {
 	logger->warn("NetProxy set game end: {}", getName());
-	if (!DataStoreQ::GetDataQ().push(stateData.getData())) {
+	if (!DataStoreQ::GetDataQ().push(std::move(stateData))) {
 		logger->error("Failed to push data, queue busy: {}",  getName());
 	}
-	stateData = StateDataType(); //TODO: unique_ptr is better?
+	stateData = std::make_unique<StateDataType>();
 }
 
 template <class NetType>

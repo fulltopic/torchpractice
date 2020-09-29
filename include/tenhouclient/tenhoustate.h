@@ -91,7 +91,7 @@ protected:
 	bool isReach;
 	bool isOwner;
 
-	std::shared_ptr<spdlog::logger> logger;
+	std::shared_ptr<spdlog::logger>& logger;
 	std::set<int> doras;
 
 	inline int stateIndex(const int index) {

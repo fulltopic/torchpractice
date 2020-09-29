@@ -120,7 +120,7 @@ void FilePolicy::reset() {
 }
 
 int FilePolicy::getAction(Tensor values, const vector<int>& candidates ) {
-	static auto logger = Logger::GetLogger();
+//	static auto logger = Logger::GetLogger();
 
 	std::cout << "Get output sizes: " << values.sizes() << std::endl;
 

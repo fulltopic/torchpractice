@@ -30,6 +30,8 @@
 #include "rltest/rltestutils.h"
 #include "rltest/rltestsetting.h"
 
+#include "utils/storedata.h"
+
 namespace rltest {
 using Tensor = torch::Tensor;
 using string = std::string;

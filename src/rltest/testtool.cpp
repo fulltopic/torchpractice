@@ -14,6 +14,7 @@
 #include <thread>
 #include <condition_variable>
 #include <mutex>
+#include <queue>
 
 #include <time.h>
 
@@ -666,16 +667,36 @@ static void testVector() {
 }
 
 struct TestRefData {
-	int data;
+	static int seq;
 
-	TestRefData(int i): data(i) {
-		cout << "TestRefData constructor " << endl;
+	int data;
+	int dataSeq;
+
+	TestRefData(int i): data(i), dataSeq(seq) {
+		cout << "TestRefData constructor: " << seq << endl;
+		seq ++;
 	}
 
-	TestRefData(const TestRefData& other): data(other.data) {
-		cout << "TestRefData copy constructor" << endl;
+	TestRefData(const TestRefData& other): data(other.data), dataSeq(seq) {
+		cout << "TestRefData copy constructor: " << seq << endl;
+		seq ++;
+	}
+
+	TestRefData(const TestRefData&& other): data(other.data), dataSeq(seq) {
+		cout << "move copy constructor: " << dataSeq << endl;
+		seq ++;
+	}
+
+	TestRefData& operator= (const TestRefData& other) {
+		data = other.data;
+		return *this;
+	}
+
+	~TestRefData() {
+		cout << "TestRefData destructor: " << dataSeq << endl;
 	}
 };
+int TestRefData::seq = 0;
 
 struct TestRefWrapper {
 	TestRefData& data;
@@ -695,28 +716,71 @@ struct TestRefWrapper {
 	}
 };
 
+static void unknown() {
+	//	TestRefData data1(10);
+	//	TestRefData data2(20);
+	//
+	//	TestRefWrapper ref1(data1);
+	//	TestRefWrapper ref2(data2);
+	//
+	//	ref1.add();
+	//	ref1.printData();
+	//	ref1.update();
+	//	ref1.printData();
+	//
+	//	ref2.printData();
+
+	//	std::vector<TestRefData> datas(2, TestRefData(20));
+
+	//	std::vector<TestRefData> datas;
+	//	for (int i = 0; i < 3; i ++) {
+	//		datas.push_back(20);
+	//	}
+}
 static void testRefFunc () {
-//	TestRefData data1(10);
-//	TestRefData data2(20);
-//
-//	TestRefWrapper ref1(data1);
-//	TestRefWrapper ref2(data2);
-//
-//	ref1.add();
-//	ref1.printData();
-//	ref1.update();
-//	ref1.printData();
-//
-//	ref2.printData();
+	std::queue<TestRefData> q;
 
-//	std::vector<TestRefData> datas(2, TestRefData(20));
+	cout << "To create object " << endl;
+	TestRefData d(1);
 
-	std::vector<TestRefData> datas;
-	for (int i = 0; i < 3; i ++) {
-		datas.push_back(20);
-	}
+	cout << "To push " << endl;
+	q.push(std::move(d));
+	cout << "to get front " << endl;
+	auto dOut = q.front();
+	cout << "to pop " << endl;
+	q.pop();
+
+	cout << "d: " << dOut.dataSeq << endl;
+
+	cout << "End of test " << endl;
 }
 
+static void testUniquePtr () {
+	std::queue<std::unique_ptr<TestRefData>> q;
+
+	cout << "To create element " << endl;
+	std::unique_ptr<TestRefData> d = std::make_unique<TestRefData>(1);
+
+	cout << "To push " << endl;
+	q.push(std::move(d));
+
+	cout << "To get front " << endl;
+	auto dOut = std::move(q.front());
+	if (!dOut) {
+		cout << "dOut is nullptr " << endl;
+	} else {
+		cout << "dOut: " << dOut->dataSeq << endl;
+	}
+
+	cout << "To pop " << endl;
+	q.pop();
+	cout << "After pop " << endl;
+	if (!dOut) {
+		cout << "dOut is nullptr " << endl;
+	} else {
+		cout << "dOut: " << dOut->dataSeq << endl;
+	}
+}
 
 static void testZeros () {
 	Tensor t0 = torch::zeros({2, 2});
@@ -759,8 +823,9 @@ int main(int argc, char** argv) {
 
 //	testVector();
 //	testRefFunc();
+	testUniquePtr();
 
-	testPad();
+//	testPad();
 
 //	testZeros();
 }

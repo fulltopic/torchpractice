@@ -14,7 +14,7 @@
 #include "spdlog/sinks/stdout_color_sinks.h"
 
 //TODO: Move settings out of static function
-std::shared_ptr<spdlog::logger> Logger::GetLogger() {
+std::shared_ptr<spdlog::logger>& Logger::GetLogger() {
 	static auto console = spdlog::stdout_color_mt("console");
 //	static bool setPattern = false;
 	static auto logger = spdlog::get("console");

@@ -15,7 +15,7 @@ class Logger {
 	~Logger() = delete;
 
 public:
-	static std::shared_ptr<spdlog::logger> GetLogger();
+	static std::shared_ptr<spdlog::logger>& GetLogger();
 };
 
 
