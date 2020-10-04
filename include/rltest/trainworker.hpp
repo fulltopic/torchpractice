@@ -33,6 +33,7 @@
 #include "tenhouclient/netproxy.hpp"
 
 #include "utils/datastorequeue.h"
+#include "utils/teststats.h"
 
 #include "returncal.h"
 #include "rltestsetting.h"
@@ -47,22 +48,11 @@ private:
 	std::shared_ptr<spdlog::logger> logger;
 
 public:
-//	static const int Cap;
 	enum {Cap = 2,};
 	std::vector<std::shared_ptr<NetType>> nets;
 	std::vector<std::unique_ptr<OptType>> optimizers;
 
 
-//	template<typename ...NetArgs>
-//	explicit TrainObj(NetArgs args): curIndex(0), lastIndex(1) {
-//		nets.push_back(std::shared_ptr<NetType>(args));
-//
-//		for (int i = 1; i < Cap; i ++) {
-//			auto copy = nets[curIndex]->clone();
-//			std::shared_ptr<NetType> cpyNet = std::dynamic_pointer_cast<NetType>(copy);
-//			nets.push_back(cpyNet);
-//		}
-//	}
 	explicit TrainObj(): curIndex(0), lastIndex(1), epochNum(0), totalSampleNum(0), logger(Logger::GetLogger()) {
 	}
 
@@ -84,11 +74,25 @@ public:
 	}
 
 	template<typename ...OptArgs>
-	void createOptimizers(OptArgs&&... args) {
+	void createOptimizers(std::string optModelPath, OptArgs&&... args) {
 		for (int i = 0; i < Cap; i ++) {
 			//TODO: move?
 //			optimizers.push_back(OptType(nets[i]->parameters(), args...));
-			optimizers.push_back(std::make_unique<OptType>(nets[i]->parameters(), args...));
+//			optimizers.push_back(std::make_unique<OptType>(nets[i]->parameters(), args...));
+			auto opt = std::make_unique<OptType>(nets[i]->parameters(), args...);
+			if (optModelPath.size() > 0) {
+				logger->info("To load optimizer model from {}", optModelPath);
+				try {
+				torch::serialize::InputArchive inChive;
+				inChive.load_from(optModelPath);
+				opt->load(inChive);
+				logger->info("Loaded optimizer ");
+				} catch (std::exception& e) {
+					logger->error("Failed to load optimizer model as: {}", e.what());
+				}
+			}
+
+			optimizers.push_back(std::move(opt));
 			logger->warn("Create optimizer {}", i);
 		}
 	}
@@ -104,7 +108,8 @@ public:
 		return nets[curIndex];
 	}
 
-	void saveNet() {
+
+	void saveNetOpt() {
 		if (epochNum < rltest::RlSetting::SaveEpochThreshold) {
 			return;
 		}
@@ -129,6 +134,23 @@ public:
 		} catch (std::exception& e) {
 			logger->error("Failed to save model as: {}", e.what());
 		}
+
+		std::string optTypeName = typeid(OptType).name();
+		std::string optFileName = optTypeName + "_"
+				+ std::to_string(epochNum) + "_"
+				+ std::to_string(totalSampleNum) + "_"
+				+ std::to_string(saveSecond);
+		std::string optModelPath = rltest::RlSetting::ModelDir + "/" + optFileName + ".pt";
+		logger->info("To save opt into {}", optModelPath);
+
+		torch::serialize::OutputArchive optOutputArchive;
+		try {
+			optimizers[curIndex]->save(optOutputArchive);
+			optOutputArchive.save_to(optModelPath);
+			logger->info("Optimizer saved");
+		} catch(std::exception& e){
+			logger->error("Failed to save optimizer model as: {}", e.what());
+		}
 	}
 
 	void updateNet(std::vector<std::vector<torch::Tensor>> inputs, const int sampleNum) {
@@ -145,7 +167,7 @@ public:
 		epochNum ++;
 		totalSampleNum += sampleNum;
 
-		saveNet();
+		saveNetOpt();
 	}
 
 	void switchNet() {
@@ -155,13 +177,6 @@ public:
 		logger->warn("Cloned net {} into net {}", curIndex, lastIndex);
 
 		//TODO: Check if it is not rmspro optimizer
-//		auto& options = nets[curIndex]->defaults();
-//		optimizers[lastIndex] = OptType(nets[lastIndex]->parameters(), stat)
-//		optimizers[lastIndex] = OptType(nets[lastIndex]->parameters());//, //clone options);
-//		auto& paramGroups = optimizers[lastIndex].param_groups();
-//		paramGroups.clear();
-//		optimizers[lastIndex].add_param_group(cpyNet->parameters());
-//		logger->warn("Update parameters bound to net {}", lastIndex);
 		auto& optOptions = optimizers[curIndex]->defaults();
 		optimizers[lastIndex] = std::move(std::make_unique<OptType>(nets[lastIndex]->parameters(), static_cast<OptOptionType&>(optOptions)));
 		std::ostringstream buf;
@@ -173,7 +188,6 @@ public:
 		torch::serialize::InputArchive input_archive;
 		input_archive.load_from(inStream);
 		optimizers[lastIndex]->load(input_archive);
-//		cloneOpt(optimizers[curIndex], optimizers[lastIndex]);
 		logger->warn("Optimizer updated ");
 
 		int tmp = curIndex;
@@ -183,8 +197,6 @@ public:
 	}
 };
 
-//template<class NetType, class OptType, class OptOptionType>
-//const int TrainObj<NetType, OptType, OptOptionType>::Cap = 2;
 
 template <class NetType, class OptType, class OptOptionType>
 class RlTrainWorker {
@@ -197,6 +209,8 @@ private:
 
 	//TODO: inject innstate and policy
 	std::vector<std::shared_ptr<NetProxy<NetType>>> netProxies;
+	std::vector<bool> workingStatus;
+
 
 //	std::queue<StoreDataType> dataQ;
 	std::queue<std::unique_ptr<StateDataType>> dataQ; //Buffer, for tmp peak
@@ -327,17 +341,23 @@ void RlTrainWorker<NetType, OptType, OptOptionType>::trainingWork() {
 	std::vector<std::shared_ptr<std::promise<bool>>> promises;
 
 	for (int i = 0; i < netProxies.size(); i ++) {
-		auto promiseObj = std::make_shared<std::promise<bool>>();
-		promises.push_back(promiseObj);
-		netProxies[i]->setUpdating(promiseObj);
+			if (workingStatus[i]) {
+				auto promiseObj = std::make_shared<std::promise<bool>>();
+				promises.push_back(promiseObj);
+				netProxies[i]->setUpdating(promiseObj);
 
-		logger->warn("Proxy {} set updating", netProxies[i]->getName());
+				logger->warn("Proxy {} set updating", netProxies[i]->getName());
+		} else {
+			logger->info("Proxy {} is not working, ignore update", netProxies[i]->getName());
+		}
 	}
 	for (int i = 0; i < promises.size(); i ++) {
-		logger->warn("Waiting for promise {}", i);
-		auto futureObj = promises[i]->get_future();
-		futureObj.get();
-		logger->warn("Got promise {}", i);
+		if (workingStatus[i]) {
+			logger->warn("Waiting for promise {}", i);
+			auto futureObj = promises[i]->get_future();
+			workingStatus[i] = futureObj.get();
+			logger->warn("Got promise {}", i);
+		}
 	}
 
 	//clear dirty data
@@ -363,43 +383,62 @@ void RlTrainWorker<NetType, OptType, OptOptionType>::start() {
 		return;
 	}
 
+	logger->info("create statistics recorder");
+	auto recorder = RlTestStatRecorder::GetRecorder(rltest::RlSetting::StatsDataName);
+
 	logger->error("------------------------------------> Try to start worker");
-//	std::cout << "----------------------------------------------> Try to start worker " << std::endl;
-	RandomPolicy policy(1.0);
+	RandomPolicy policy(0.95);
+	RandomPolicy rnPolicy(0.0);
 
 	const int proxyNum = rltest::RlSetting::ProxyNum;
 //	std::vector<BaseState> innerStates(proxyNum, BaseState(72, 5));
 
-//	NetProxy<GRUStepNet> netProxy(std::shared_ptr<GRUStepNet>(new GRUStepNet()), innState, policy);
 	//TODO: Clarify move/forward/copy constructor/move constructor
 	auto net = trainingProxy.getWorkingNet();
 	for (int i = 0; i < proxyNum; i ++) {
-//		netProxies.push_back(std::forward<NetProxy<NetType>>(NetProxy<NetType>(rltest::RlSetting::Names[i], net, innerStates[i], policy)));
-//		netProxies.push_back(std::move<NetProxy<NetType>>(NetProxy<NetType>(rltest::RlSetting::Names[i], net, innerStates[i], policy)));
-//		netProxies.push_back({rltest::RlSetting::Names[i], net, innerStates[i], policy});
-//		netProxies.push_back(std::shared_ptr<NetProxy<NetType>>(new NetProxy<NetType>(rltest::RlSetting::Names[i], net, innerStates[i], policy)));
-		netProxies.push_back(std::shared_ptr<NetProxy<NetType>>(new NetProxy<NetType>(rltest::RlSetting::Names[i], net, {72, 5}, policy)));
+		if (rltest::RlSetting::IsPrivateTest) {
+			if ((i % 2) == 0) {
+				netProxies.push_back(std::shared_ptr<NetProxy<NetType>>(
+					new NetProxy<NetType>(rltest::RlSetting::Names[i], net, {72, 5}, policy)));
+				logger->info("proxy {} created with policy", netProxies[i]->getName(), false);
+			} else {
+				netProxies.push_back(std::shared_ptr<NetProxy<NetType>>(
+					new NetProxy<NetType>(rltest::RlSetting::Names[i], net, {72, 5}, rnPolicy)));
+				logger->info("proxy {} created with random policy", netProxies[i]->getName(), true);
+			}
+		} else {
+			netProxies.push_back(std::shared_ptr<NetProxy<NetType>>(
+					new NetProxy<NetType>(rltest::RlSetting::Names[i], net, {72, 5}, policy)));
+			logger->info("proxy {} created with policy", netProxies[i]->getName(), false);
+		}
 	}
 
-//	std::vector<boost::asio::io_context> ios(rltest::RlSetting::ProxyNum);
+	logger->info("To set proxy working stats");
+	workingStatus = std::vector<bool>(netProxies.size(), true);
+
+	logger->info("To prepare stats recorder");
+	for (int i = 0; i < proxyNum; i ++){
+		netProxies[i]->setStatsRecorder(recorder);
+	}
+	//TODO: why &record is invalid?
+	std::thread recordThread(&RlTestStatRecorder::write2File, recorder);
+
+	logger->info("Create fsm with net ");
 	boost::asio::io_context io;
 
-//	auto pointer = asiotenhoufsm<GRUStepNet>::Create(io, netProxy, "NoName");
 	std::vector<boost::shared_ptr<asiotenhoufsm<NetType>>> clientPointers;
 	for (int i = 0; i< proxyNum; i ++) {
-//		clientPointers.push_back(asiotenhoufsm<NetType>::Create(ios[i], netProxies[i],
-//				rltest::RlSetting::ServerIp, rltest::RlSetting::ServerPort, rltest::RlSetting::Names[i]));
 		clientPointers.push_back(asiotenhoufsm<NetType>::Create(io, netProxies[i],
-				rltest::RlSetting::ServerIp, rltest::RlSetting::ServerPort, rltest::RlSetting::Names[i]));
+				rltest::RlSetting::ServerIp, rltest::RlSetting::ServerPort, rltest::RlSetting::Names[i], rltest::RlSetting::IsPrivateTest));
 
 	}
 
+	logger->info("To start all client fsm");
 	for (int i = 0; i < proxyNum; i ++) {
 		clientPointers[i]->start();
 	}
-//	std::thread ioThread(
-//			static_cast<std::size_t (boost::asio::io_context::*)()>(&boost::asio::io_context::run), &io);
 
+	logger->info("Launch threads for io service");
 	std::vector<std::unique_ptr<std::thread>> ioThreads;
 	for (int i = 0; i < rltest::RlSetting::ThreadNum; i ++) {
 		ioThreads.push_back(std::make_unique<std::thread>(
@@ -408,6 +447,7 @@ void RlTrainWorker<NetType, OptType, OptOptionType>::start() {
 
 	logger->warn("----------------------------------------> All asio fsm started ");
 
+	logger->info("Ready to train");
 	while (true) {
 		trainingWork();
 		sleep(100);

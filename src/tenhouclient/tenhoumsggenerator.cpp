@@ -78,6 +78,22 @@ string TenhouMsgGenerator::GenRejoinMsg(string msg) {
 	return AddWrap("JOIN t=\"0,1,r\" ");
 }
 
+std::string TenhouMsgGenerator::GenLobbyPxrMsg() {
+	return AddWrap("PXR v=\"-1\"");
+}
+
+std::string TenhouMsgGenerator::GenLobbyJoinMsg() {
+	return AddWrap("JOIN t=\"3581,1\"");
+}
+
+std::string TenhouMsgGenerator::GenLobbyRejoinMsg() {
+	return AddWrap("JOIN t=\"3581,1\"");
+}
+
+std::string TenhouMsgGenerator::GenLobbyChatMsg() {
+	return AddWrap("CHAT text=\"/lobby 3581\"");
+}
+
 string TenhouMsgGenerator::GenGoMsg() {
 	return AddWrap("GOK ");
 }

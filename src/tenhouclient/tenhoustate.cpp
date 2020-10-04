@@ -312,14 +312,17 @@ vector<int> BaseState::getCandidates(int type, int raw) {
 		tiles.push_back(PongAction);
 		tiles.push_back(ChowAction);
 		tiles.push_back(NOOPAction);
+		return tiles;
 	} else if (type == StealType::PonKanType) {
 		auto tiles = getDropCandidates();
 		tiles.push_back(PongAction);
 		tiles.push_back(KaKanAction);
 		tiles.push_back(NOOPAction);
+		return tiles;
+	} else {
+		logger->error("Invalid type {} for candidates: {}", type, raw);
+		return vector<int>();
 	}
-
-	return vector<int>();
 }
 
 bool BaseState::is7Pair(const vector<int>& nums) {

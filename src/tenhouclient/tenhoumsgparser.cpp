@@ -20,6 +20,8 @@ using namespace boost;
 using namespace boost::xpressive;
 using namespace std;
 
+AgariResult::AgariResult(): winnerIndex(-1), fromWho(-1), machi(-1), reward(0) {}
+
 const std::set<string> TenhouMsgParser::Keys {"TAIKYOKU", " INIT", "T", "D", "U", "E", "V", "F", "W", "G", "N", "RYUUKYOKU", "AGARI", "REACH", "DORA"};
 const std::set<string> TenhouMsgParser::SceneKeys {"HELO", "JOIN", "REJOIN", "UN", "LN", "GO", "PROF"};
 
@@ -461,32 +463,38 @@ ReachResult TenhouMsgParser::ParseReach (std::string msg) {
 }
 
 AgariResult TenhouMsgParser::ParseAgari (std::string msg) {
+	static const string whoHeader = "who=\"";
+	static const string machiHeader = "machi=\"";
+	static const string scHeader = "sc=\"";
+	static const string fromWhoHeader = "fromWho=\"";
+
 	vector<string> items = ParseItems(msg);
-	int who = -1;
-	int machi = -1;
-	int reward = 0;
+	AgariResult rc;
 
 	for (int i = 0; i < items.size(); i ++) {
 //		cout << "Parse item " << items[i] << endl;
-		if (items[i].find("who") != string::npos) {
-			who = ParseHead("who=\"", items[i]);
+		if (items[i].find(whoHeader) != string::npos) {
+			rc.winnerIndex = ParseHead(whoHeader, items[i]);
 		}
-		if (items[i].find("machi") != string::npos) {
-			machi = ParseHead("machi=\"", items[i]);
+		if (items[i].find(machiHeader) != string::npos) {
+			rc.machi = ParseHead(machiHeader, items[i]);
 		}
-		if (items[i].find("sc") != string::npos) {
-			string valueMsg = RemoveHead("sc=\"", items[i]);
+		if (items[i].find(scHeader) != string::npos) {
+			string valueMsg = RemoveHead(scHeader, items[i]);
 //			cout << "Value msg " << valueMsg << endl;
-			vector<string> valueItems = ParseValues(valueMsg, "sc=\"", ",");
+			vector<string> valueItems = ParseValues(valueMsg, scHeader, ",");
 //			for (int j = 0; j < valueItems.size(); j ++) {
 //				cout << valueItems[j] << ", ";
 //			}
 //			cout << endl;
-			reward = atoi(valueItems[1].c_str());
+			rc.reward = atoi(valueItems[1].c_str());
+		}
+		if (items[i].find(fromWhoHeader) != string::npos) {
+			rc.fromWho = ParseHead(fromWhoHeader, items[i]);
 		}
 	}
 
-	return {who, machi, reward};
+	return std::move(rc);
 }
 
 //TODO: To fill from who

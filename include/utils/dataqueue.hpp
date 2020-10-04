@@ -79,6 +79,7 @@ bool R1WmQueue<DataType, Capacity>::push(DataType&& data) {
 	return true;
 }
 
+//TODO: Is there a move constructor or a simple reference? How to make sure it is valid after pop if it was a reference?
 template<typename DataType, int Capacity>
 DataType&& R1WmQueue<DataType, Capacity>::pop() {
 	uint32_t index = readSeq % Capacity;

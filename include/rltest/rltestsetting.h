@@ -28,9 +28,12 @@ public:
 //	static const int NetNum;
 
 	static std::vector<std::string> Names;
-	static std::string ModelDir;
+	static const std::string ModelDir;
+	static const std::string StatsDataName;
 	static const std::string ServerIp;
 	static const int ServerPort;
+
+	static const bool IsPrivateTest;
 };
 }
 

@@ -39,6 +39,11 @@ public:
 	static std::string GenGoMsg();
 	static std::string GenNextReadyMsg();
 
+	static std::string GenLobbyPxrMsg();
+	static std::string GenLobbyChatMsg();
+	static std::string GenLobbyJoinMsg();
+	static std::string GenLobbyRejoinMsg();
+
 	static std::string GenKAMsg();
 
 	static std::string GenByeMsg();

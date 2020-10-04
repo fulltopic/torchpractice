@@ -24,6 +24,8 @@
 #include "utils/logger.h"
 #include "utils/datastorequeue.h"
 #include "utils/storedata.h"
+#include "utils/teststats.h"
+
 #include "policy/tenhoupolicy.h"
 
 #include "tenhouclient/tenhoustate.h"
@@ -76,7 +78,6 @@ private:
 	NetStatus netStatus;
 	std::mutex netStatusMutex;
 	std::condition_variable netStatusCond;
-//	torch::Tensor board;
 
 //TODO: Remove reference
 //	TenhouState& innerState;
@@ -94,8 +95,11 @@ private:
 	int step;
 	int gameSeq;
 
+	bool isTestPlayer;
+
 	//TODO: Should hold a storage data in construction?
 	std::unique_ptr<StateDataType> stateData;
+	std::shared_ptr<RlTestStatRecorder> statsRecorder;
 //	StateDataType stateData;
 
 	//RandomNet net;
@@ -130,7 +134,7 @@ private:
 
 //	template<typename T>
 	void initGru(std::true_type) {
-		logger->error("initGru");
+		logger->info("initGru");
 		isGru = true;
 		gruHState = net->createHState();
 		step = 0;
@@ -143,7 +147,7 @@ private:
 
 public:
 //	NetProxy(const std::string name, std::shared_ptr<NetType> net, TenhouState& state, TenhouPolicy& iPolicy);
-	NetProxy(const std::string name, std::shared_ptr<NetType> net, at::IntArrayRef stateSize, TenhouPolicy& iPolicy);
+	NetProxy(const std::string name, std::shared_ptr<NetType> net, at::IntArrayRef stateSize, TenhouPolicy& iPolicy, bool isTester = false);
 	NetProxy(const NetProxy& other) = delete;
 
 	~NetProxy() = default;
@@ -153,12 +157,16 @@ public:
 
 	bool isUpdating() { return netStatus == Updating; }
 	bool isRunning() { return netStatus == Running; }
-	bool setDetected();
+	bool setDetected(bool status);
 	void setUpdating(std::shared_ptr<std::promise<bool>> promiseObj);
 	void setRunning(std::shared_ptr<NetType> newNet);
 
 	void setGameEnd();
 	inline std::string getName() { return name; }
+
+	inline void setStatsRecorder (std::shared_ptr<RlTestStatRecorder>& recorder) {
+		statsRecorder = recorder;
+	}
 };
 
 
@@ -192,7 +200,8 @@ void NetProxy<NetType>::updateReward(float reward) {
 //}
 
 template <class NetType>
-NetProxy<NetType>::NetProxy(const std::string netName, std::shared_ptr<NetType> iNet, at::IntArrayRef stateSize, TenhouPolicy& iPolicy):
+NetProxy<NetType>::NetProxy(
+		const std::string netName, std::shared_ptr<NetType> iNet, at::IntArrayRef stateSize, TenhouPolicy& iPolicy, bool isPrivate):
 	name(netName),
 	netStatus(Running),
 	innerState(BaseState(stateSize[0], stateSize[1])),
@@ -201,7 +210,9 @@ NetProxy<NetType>::NetProxy(const std::string netName, std::shared_ptr<NetType> 
 	gameSeq(0),
 	policy(iPolicy),
 	net(iNet),
-	logger(Logger::GetLogger()){
+	logger(Logger::GetLogger()),
+	isTestPlayer(isPrivate)
+{
 
 	initGru(std::integral_constant<bool, HasCreateHState<NetType>::Has>());
 }
@@ -499,19 +510,26 @@ std::string NetProxy<NetType>::processGameEndInd(std::string msg) {
 			innerState.addTile(rc.machi);
 		}
 		reward = rc.reward;
+
+		if (statsRecorder) {
+			statsRecorder->push(std::move(RlTestStatData(getName(), gameSeq, GameEndType::AGA, rc.winnerIndex, rc.fromWho, rc.reward)));
+		}
 	} else if (msg.find("RYU") != std::string::npos) {
 		reward = P::ParseRyu(msg);
+
+		if (statsRecorder) {
+			statsRecorder->push(std::move(RlTestStatData(getName(), gameSeq, GameEndType::RYU, -1, -1, reward)));
+		}
 	}
 
 	logger->info("Reward of the game: {}", reward);
 
-//	std::vector<torch::Tensor> inputs = innerState.endGame();
 	updateReward(reward);
+//	std::vector<torch::Tensor> inputs = innerState.endGame();
 //	DataStoreQ::GetDataQ().push(stateData.getData());
 //	stateData = StateDataType(); //TODO: unique_ptr is better?
 
 //	policy.reset();
-
 	return StateReturnType::Nothing;
 }
 
@@ -708,7 +726,7 @@ void NetProxy<NetType>::setUpdating(std::shared_ptr<std::promise<bool>> promiseO
 }
 
 template <class NetType>
-bool NetProxy<NetType>::setDetected() {
+bool NetProxy<NetType>::setDetected(bool status) {
 	logger->warn("NetProxy try to set detected: {}", getName());
 //	std::unique_lock<std::mutex> lock(netStatusMutex);
 //
@@ -732,7 +750,7 @@ bool NetProxy<NetType>::setDetected() {
 		} else {
 			logger->warn("NetProxy to set detected: {}", getName());
 			netStatus = Detected;
-			statusPromise->set_value(true);
+			statusPromise->set_value(status);
 			statusPromise.reset();
 			return true;
 		}
@@ -755,8 +773,13 @@ void NetProxy<NetType>::setRunning(std::shared_ptr<NetType> newNet) {
 template <class NetType>
 void NetProxy<NetType>::setGameEnd() {
 	logger->warn("NetProxy set game end: {}", getName());
-	if (!DataStoreQ::GetDataQ().push(std::move(stateData))) {
-		logger->error("Failed to push data, queue busy: {}",  getName());
+
+	if (!isTestPlayer) {
+		if (!DataStoreQ::GetDataQ().push(std::move(stateData))) {
+			logger->error("Failed to push data, queue busy: {}",  getName());
+		}
+	} else {
+			logger->info("TestPlayer drop state data {}", getName());
 	}
 	stateData = std::make_unique<StateDataType>();
 }

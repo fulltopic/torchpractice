@@ -22,7 +22,7 @@
 #include <iostream>
 #include <string>
 #include <vector>
-
+#include <atomic>
 
 #include <boost/array.hpp>
 #include <boost/asio.hpp>
@@ -39,8 +39,15 @@ template<class NetType>
 class asiotenhoufsm
 	:public boost::enable_shared_from_this <asiotenhoufsm<NetType>> {
 public:
+	enum ResetStatus {
+		NotReset = 0,
+		Resetting = 1,
+		Resetted = 2,
+	};
+
 	static const int GameEnd2NextTimeout;// = 2;
 	static const int SceneEnd2StartTimeout;// = 5;
+	static const int DetectNetUpdateTimeout;
 	static const int KATimeout;// = 15;
 	static const int LNThreshold; // = 8
 	static const int ReConnTimeout; // = 15
@@ -51,7 +58,7 @@ public:
 
 	typedef boost::shared_ptr<asiotenhoufsm<NetType>> pointer;
 	static pointer Create (boost::asio::io_context& io, std::shared_ptr<NetProxy<NetType>> net,
-			const std::string serverIp, const int serverPort, const std::string tenhouName);
+			const std::string serverIp, const int serverPort, const std::string tenhouName, bool isPrivate = false);
 
 	bool start();
 	void reset();
@@ -77,10 +84,14 @@ private:
 	bool gameBegin;
 	int lnCount;
 	int restartCount;
+	bool isValid;
+	bool isPrivate;
+
+	std::atomic<int> resetState;
 
 //	asiotenhoufsm(boost::asio::io_context& iio, NetProxy<RandomNet>& iNet);
 	asiotenhoufsm(boost::asio::io_context& iio, std::shared_ptr<NetProxy<NetType>> iNet,
-			const std::string ServerIp, const int serverPort, const std::string tenhouName);
+			const std::string ServerIp, const int serverPort, const std::string tenhouName, bool privateLobby = false);
 
 	bool send (std::string msg);
 //	void handleSnd (StateType nextType, boost::system::error_code& e);
@@ -88,6 +99,7 @@ private:
 	void errState ();
 	void heloState (const boost::system::error_code& e, std::size_t len);
 	void authState (const boost::system::error_code& e, std::size_t len);
+	void heloLobbyState (const boost::system::error_code& e, std::size_t len);
 	void joinState (const boost::system::error_code& e, std::size_t len);
 	void readyState (const boost::system::error_code& e, std::size_t len);
 	void gameState (const boost::system::error_code& e, std::size_t len);
@@ -98,10 +110,10 @@ private:
 	void sceneEnd2StartTimerHandle(const boost::system::error_code& e);
 	void kaTimerHandle(const boost::system::error_code& e);
 	void reConnTimerHandle(const boost::system::error_code& e);
-	void toReset ();  //To break too long command line
+	void toReset (int n = 1, bool validFsm = true);  //To break too long command line
 
 	inline void logUnexpMsg(const std::string stateName, const std::string msg) {
-		logger->error("{} received unexpected msg: {}", stateName, msg);
+		logger->error("{} --> {} received unexpected msg: {}", net->getName(), stateName, msg);
 	}
 
 	//TODO: To recover and reconnect
@@ -109,8 +121,12 @@ private:
 		logger->error("{} networking failure: {}", stateName, msg);
 	}
 
+	inline bool isWorking() { return isValid; }
+
 	void processGameMsg(std::string msg);
 	std::vector<std::string> splitRcvMsg(std::string msg);
+
+	void close(bool validFsm = true);
 };
 
 using boost::asio::ip::tcp;
@@ -136,7 +152,8 @@ template<class NetType>
 const int asiotenhoufsm<NetType>::ReConnTrial = 30;
 template<class NetType>
 const int asiotenhoufsm<NetType>::ReConnThreshold = 10;
-
+template<class NetType>
+const int asiotenhoufsm<NetType>::DetectNetUpdateTimeout = 30;
 
 
 #define RegRcv(handle) sock.async_receive(	\
@@ -148,7 +165,7 @@ boost::bind(&asiotenhoufsm::handle, this->shared_from_this(),	\
 
 template<class NetType>
 asiotenhoufsm<NetType>::asiotenhoufsm(boost::asio::io_context& iio, std::shared_ptr<NetProxy<NetType>> iNet,
-		const std::string serverIp, const int serverPort, const std::string tenhouName)
+		const std::string serverIp, const int serverPort, const std::string tenhouName, bool privateLobby)
 	: name(tenhouName),
 	  resolver(iio),
 	  serverP(boost::asio::ip::address::from_string(serverIp), serverPort),
@@ -162,7 +179,10 @@ asiotenhoufsm<NetType>::asiotenhoufsm(boost::asio::io_context& iio, std::shared_
 	  authenticated(false),
 	  gameBegin(false),
 	  lnCount(0),
-	  restartCount(0)
+	  restartCount(0),
+	  isValid(true),
+	  isPrivate(privateLobby),
+	  resetState(NotReset)
 {
 }
 
@@ -173,16 +193,71 @@ asiotenhoufsm<NetType>::~asiotenhoufsm() {
 
 template<class NetType>
 typename asiotenhoufsm<NetType>::pointer asiotenhoufsm<NetType>::Create(boost::asio::io_context& io, std::shared_ptr<NetProxy<NetType>> net,
-		const std::string serverIp, const int serverPort, const std::string tenhouName) {
-	return pointer(new asiotenhoufsm<NetType>(io, net, serverIp, serverPort, tenhouName));
+		const std::string serverIp, const int serverPort, const std::string tenhouName, bool isPrivate) {
+	return pointer(new asiotenhoufsm<NetType>(io, net, serverIp, serverPort, tenhouName, isPrivate));
+}
+
+//TODO: Ensure only one reset invoked once, and no reset in normal running
+//atomic status to ensure, and close immediately
+template <class NetType>
+void asiotenhoufsm<NetType>::toReset(int n, bool validFsm) {
+	int tmpResetState = resetState;
+	if (tmpResetState != NotReset) {
+		return;
+	}
+
+	if (!resetState.compare_exchange_weak(tmpResetState, Resetting)) {
+		return;
+	}
+
+	close(validFsm);
+
+	if (validFsm) {
+		logger->warn("To reset connection after {} seconds ", n * ReConnTimeout);
+		reConnTimer.expires_from_now(boost::posix_time::seconds(n * ReConnTimeout));
+		reConnTimer.async_wait(boost::bind(&asiotenhoufsm<NetType>::reConnTimerHandle, this->shared_from_this(),
+						boost::asio::placeholders::error));
+	} else {
+		logger->error("Invalid client id {}, end of fsm ", net->getName());
+	}
 }
 
 template <class NetType>
-void asiotenhoufsm<NetType>::toReset() {
-	logger->warn("To reset connection after {} seconds ", ReConnTimeout);
-	reConnTimer.expires_from_now(boost::posix_time::seconds(ReConnTimeout));
-	reConnTimer.async_wait(boost::bind(&asiotenhoufsm<NetType>::reConnTimerHandle, this->shared_from_this(),
-						boost::asio::placeholders::error));
+void asiotenhoufsm<NetType>::close(bool validFsm) {
+	isValid = false;
+
+	sock.cancel();
+	gameEnd2NextTimer.cancel();
+	sceneEnd2StartTimer.cancel();
+	kaTimer.cancel();
+	reConnTimer.cancel();
+
+	authenticated = false;
+	gameBegin = false;
+	lnCount = 0;
+
+	sock.close();
+
+
+	if (validFsm) {
+		if (!net->isRunning()) {
+			logger->error("Set net end in fsm close");
+			if (net->setDetected(validFsm)) {
+				net->setGameEnd();
+			}
+		}
+	} else {
+		while (net->isRunning()) {
+			logger->warn("Waiting for network updating to set fsm invalid");
+			sleep(60);
+		}
+		logger->error("Set net end in fsm close");
+		if (net->setDetected(validFsm)) {
+			net->setGameEnd();
+		}
+	}
+
+	logger->error("fsm terminates");
 }
 
 template<class NetType>
@@ -212,7 +287,6 @@ bool asiotenhoufsm<NetType>::send (std::string msg) {
 				sleep(1);
 			} catch (boost::system::system_error& e) {
 				logger->error ("Send error {}: {}", net->getName(), e.what());
-				//TODO: Reconnect
 				logger->info("To reset");
 				toReset();
 				return false;
@@ -289,10 +363,11 @@ void asiotenhoufsm<NetType>::heloState(const boost::system::error_code& e, std::
 			}
 		} else if (msg.find("ERR") != S::npos) {
 			//TODO: To deal with the error, how if one client invalid in process running
-			logger->error ("Invalid client id: {}", msg);
-//			reset(); //Retry, set end of game at reset(), distinguish cancel and normal ending
-			toReset();
+			logger->error ("{} --> Invalid client id: {}", net->getName(), msg);
+//			close();
+			toReset(5, false); //Retry, set end of game at reset(), distinguish cancel and normal ending
 		} else if (msg.find("SAIKAI") != S::npos) {
+			RegRcv(readyState);
 			//TODO: deal with saikai in helo
 		} else {
 			this->logUnexpMsg("heloState", msg);
@@ -300,9 +375,49 @@ void asiotenhoufsm<NetType>::heloState(const boost::system::error_code& e, std::
 		}
 	} else {
 		logNetworkErr("heloState", e.message());
+		toReset(); //If heloState failed because of reset(), then reset would be cancelled as the reConnTimer canceled by reset()
+	}
+}
+
+template<class NetType>
+void asiotenhoufsm<NetType>::heloLobbyState(const ErrorCode &e, std::size_t len) {
+	if ((!e) || (e == boost::asio::error::message_size)) {
+		S msg (rcvBuf.data(), len);
+		logger->debug("heloLobby received msg: {}", msg);
+
+		if (msg.find("HELO") != S::npos) {
+			auto parts = P::ParseHeloReply(msg);
+			S authMsg = G::GenAuthReply(parts);
+			S pxrMsg = G::GenPxrMsg();
+
+			if (send (authMsg + StateReturnType::SplitToken + pxrMsg)) {
+				RegRcv(heloLobbyState);
+			}
+		} else if (msg.find("LN") != S::npos) {
+//			S chatMsg = G::GenLobbyChatMsg();
+			S pxrMsg = G::GenLobbyPxrMsg();
+			S joinMsg = G::GenLobbyJoinMsg();
+
+			if (send( pxrMsg + StateReturnType::SplitToken + joinMsg)) {
+				RegRcv(authState);
+			}
+		} else if (msg.find("SAIKAI") != S::npos) {
+			RegRcv(readyState);
+		} else if (msg.find("REJOIN") != S::npos) {
+			if (send(G::GenLobbyRejoinMsg())) {
+				RegRcv(joinState);
+			}
+		}
+		else {
+			logUnexpMsg("heloLobbyState", msg);
+			RegRcv(heloLobbyState);
+		}
+	} else {
+		logNetworkErr ("heloLobbyState", e.message());
 		toReset();
 	}
 }
+
 
 template<class NetType>
 void asiotenhoufsm<NetType>::authState(const ErrorCode &e, std::size_t len) {
@@ -315,8 +430,14 @@ void asiotenhoufsm<NetType>::authState(const ErrorCode &e, std::size_t len) {
 				RegRcv(joinState);
 			}
 		} else if (msg.find("REJOIN") != S::npos) {
-			if (send (G::GenRejoinMsg(msg))) {
-				RegRcv(joinState);
+			if (isPrivate) {
+				if (send(G::GenLobbyRejoinMsg())) {
+					RegRcv(joinState);
+				}
+			} else {
+				if (send (G::GenRejoinMsg(msg))) {
+					RegRcv(joinState);
+				}
 			}
 		} else if (msg.find("RANKING") != S::npos) {
 			RegRcv(authState);
@@ -330,6 +451,10 @@ void asiotenhoufsm<NetType>::authState(const ErrorCode &e, std::size_t len) {
 					}
 				}
 			}
+		} else if (msg.find("REINIT") != S::npos) {
+			logger->debug("Reinit received in authState for private lobby player");
+			processGameMsg(msg);
+			RegRcv(gameState);
 		}
 		else {
 			logger->error("Received unexpected msg: {}", msg);
@@ -345,13 +470,13 @@ void asiotenhoufsm<NetType>::authState(const ErrorCode &e, std::size_t len) {
 template<class NetType>
 void asiotenhoufsm<NetType>::reConnTimerHandle(const boost::system::error_code& e) {
 	if (e && (e == boost::asio::error::operation_aborted)) {
-		logger->warn("Katimer cancelled");
+		logger->warn("reConnTimer cancelled");
 	} else if(!e) {
-		logger->error("Network failure, to restart client");
-		reset();
+		logger->error("Network failure, to restart client {}", net->getName());
+		start();
 	} else {
-		logger->error("Katimer interrupted as: {}", e.message());
-		reset();
+		logger->error("reConnTimer interrupted as: {}", e.message());
+//		reset();
 	}
 
 }
@@ -386,20 +511,30 @@ void asiotenhoufsm<NetType>::joinState(const ErrorCode &e, std::size_t len) {
 					lnCount ++;
 					if (lnCount > LNThreshold) {
 						toResetGame = true;
+						break;
 					}
 				}
 			} else if (msgs[i].find("TAIKYOKU") != S::npos) {
 				gameBegin = true;
-			} else if (msgs[i].find("REINIT") != S::npos || msgs[i].find("SAIKAI") != S::npos) {
-				processGameMsg(msgs[i]);
+			} else if (msgs[i].find("SAIKAI") != S::npos) {
+				gameBegin = true;
+			}
+			else if (msgs[i].find("REINIT") != S::npos) {
+				gameBegin = false;
+				for (int j = i; j < msgs.size(); j ++) {
+					processGameMsg(msgs[j]); //TODO: REINIT should be the last message
+				}
 				RegRcv(gameState);
 				return;
+			} else if (msgs[i].find("RANKING") != S::npos) {
+				RegRcv(joinState);
 			} else {
 				logUnexpMsg("joinState", msgs[i]);
 			}
 		}
 
 		if (toResetGame) {
+			lnCount = 0;
 //			kaTimer.cancel();
 			toReset();
 //			reConnTimer.expires_from_now(boost::posix_time::seconds(ReConnTimeout));
@@ -617,7 +752,7 @@ void asiotenhoufsm<NetType>::sceneEnd2StartTimerHandle(const ErrorCode &e) {
 		logger->warn("sceneEnd2StartTimer expiring");
 
 		if (!net->isRunning()) {
-			if (net->setDetected()) {
+			if (net->setDetected(true)) {
 				net->setGameEnd();
 
 				sock.cancel();
@@ -630,12 +765,12 @@ void asiotenhoufsm<NetType>::sceneEnd2StartTimerHandle(const ErrorCode &e) {
 			} else {
 				logger->info("Waiting for network updating");
 			}
-			sceneEnd2StartTimer.expires_from_now(boost::posix_time::seconds(SceneEnd2StartTimeout));
+			sceneEnd2StartTimer.expires_from_now(boost::posix_time::seconds(DetectNetUpdateTimeout));
 			sceneEnd2StartTimer.async_wait(boost::bind(&asiotenhoufsm::sceneEnd2StartTimerHandle, this->shared_from_this(),
 					boost::asio::placeholders::error));
 
 		} else {
-			net->setGameEnd();
+			net->setGameEnd(); //setGameEnd so that need not to wait for next INIT message
 
 			sock.cancel();
 
@@ -694,36 +829,50 @@ void asiotenhoufsm<NetType>::processGameMsg(S msg) {
 
 template<class NetType>
 bool asiotenhoufsm<NetType>::start() {
-//	try {
-//		sock.open(tcp::v4());
-//		sock.connect(serverP);
-//		logger->info("Connected to {}, {}", serverP.address().to_string(), serverP.port());
-//
+	resetState = NotReset;
+
+	if (isPrivate) {
+		int seconds = rand() % 10;
+		sleep(seconds);
+	}
+	try {
+		sock.open(tcp::v4());
+		sock.connect(serverP);
+		logger->info("Connected to {}, {}: {}", serverP.address().to_string(), serverP.port(), net->getName());
 //		send(G::GenHeloMsg(name));
-//	} catch (std::exception& e) {
-//		logger->error("Failed to start connection: {}", e.what());
-//		restartCount ++;
-//		if (restartCount >= ReConnTrial) {
-//			logger->error("Broken network");
-//			throw e;
-//		} else {
-//			int sleepTime = rand() % ReConnThreshold;
-//			sleep(sleepTime);
-//			logger->warn("To restart");
-//			toReset();
-//		}
-//	}
-	sock.open(tcp::v4());
-	sock.connect(serverP);
-	logger->info("Connected to {}, {}", serverP.address().to_string(), serverP.port());
+	} catch (std::exception& e) {
+		logger->error("Failed to start connection: {}", e.what());
+		restartCount ++;
+		if (restartCount >= ReConnTrial) {
+			logger->error("Broken network");
+			throw e;
+		} else {
+			int sleepTime = rand() % ReConnThreshold;
+			sleep(sleepTime);
+			logger->warn("To restart");
+			toReset();
+		}
+
+		return false;
+	}
+//	sock.open(tcp::v4());
+//	sock.connect(serverP);
+//	logger->info("Connected to {}, {}", serverP.address().to_string(), serverP.port());
 
 
 	if (send(G::GenHeloMsg(name))) { //send treat exception itself
-		RegRcv(heloState);
+		logger->info("{} sent helo ", net->getName());
+		if (!isPrivate) {
+			RegRcv(heloState);
+		} else {
+			RegRcv(heloLobbyState);
+		}
 		kaTimer.expires_from_now(boost::posix_time::seconds(KATimeout));
 		kaTimer.async_wait(boost::bind(&asiotenhoufsm::kaTimerHandle, this->shared_from_this(),
 						boost::asio::placeholders::error));
-	return true;
+		restartCount = 0;
+
+		return true;
 	} else {
 		return false;
 	}

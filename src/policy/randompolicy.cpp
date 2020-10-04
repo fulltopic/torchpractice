@@ -40,27 +40,30 @@ int RandomPolicy::getAction(Tensor values, const vector<int>& candidates) {
 	if ((rand() % 100) > (rndRate * 100)) {
 //	std::cout << "Get values sizes " << values.sizes() << std::endl;
 //
-		if (find(candidates.begin(), candidates.end(), LstmStateAction::ChowAction) != candidates.end()) {
-			return LstmStateAction::ChowAction;
-		}
-		if (find(candidates.begin(), candidates.end(), LstmStateAction::AnKanAction) != candidates.end()) {
-			return LstmStateAction::AnKanAction;
-		}
-		if (find(candidates.begin(), candidates.end(), LstmStateAction::KaKanAction) != candidates.end()) {
-			return LstmStateAction::KaKanAction;
-		}
-		if (find(candidates.begin(), candidates.end(), LstmStateAction::MinKanAction) != candidates.end()) {
-			return LstmStateAction::MinKanAction;
-		}
-		if (find(candidates.begin(), candidates.end(), LstmStateAction::PongAction) != candidates.end()) {
-			return LstmStateAction::PongAction;
-		}
-		if (find(candidates.begin(), candidates.end(), LstmStateAction::ReachAction) != candidates.end()) {
-			return LstmStateAction::ReachAction;
-		}
-		if (find(candidates.begin(), candidates.end(), LstmStateAction::RonAction) != candidates.end()) {
-			return LstmStateAction::RonAction;
-		}
+//		if (find(candidates.begin(), candidates.end(), LstmStateAction::ChowAction) != candidates.end()) {
+//			return LstmStateAction::ChowAction;
+//		}
+//		if (find(candidates.begin(), candidates.end(), LstmStateAction::AnKanAction) != candidates.end()) {
+//			return LstmStateAction::AnKanAction;
+//		}
+//		if (find(candidates.begin(), candidates.end(), LstmStateAction::KaKanAction) != candidates.end()) {
+//			return LstmStateAction::KaKanAction;
+//		}
+//		if (find(candidates.begin(), candidates.end(), LstmStateAction::MinKanAction) != candidates.end()) {
+//			return LstmStateAction::MinKanAction;
+//		}
+//		if (find(candidates.begin(), candidates.end(), LstmStateAction::PongAction) != candidates.end()) {
+//			return LstmStateAction::PongAction;
+//		}
+//		if (find(candidates.begin(), candidates.end(), LstmStateAction::ReachAction) != candidates.end()) {
+//			return LstmStateAction::ReachAction;
+//		}
+//		if (find(candidates.begin(), candidates.end(), LstmStateAction::RonAction) != candidates.end()) {
+//			return LstmStateAction::RonAction;
+//		}
+
+		int index = rand() % candidates.size();
+		return candidates[index];
 	}
 //	values.argmax(0);
 

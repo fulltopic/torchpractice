@@ -79,8 +79,11 @@ struct ReachResult {
 
 struct AgariResult {
 	int winnerIndex;
+	int fromWho;
 	int machi;
 	int reward;
+
+	AgariResult();
 };
 
 //struct StealResult {
