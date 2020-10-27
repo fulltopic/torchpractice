@@ -46,6 +46,7 @@ private:
 	uint32_t epochNum;
 	uint32_t totalSampleNum;
 	std::shared_ptr<spdlog::logger> logger;
+	std::ofstream lossStatOutput; //TODO: isvalid
 
 public:
 	enum {Cap = 2,};
@@ -54,6 +55,16 @@ public:
 
 
 	explicit TrainObj(): curIndex(0), lastIndex(1), epochNum(0), totalSampleNum(0), logger(Logger::GetLogger()) {
+		auto saveTime = std::chrono::system_clock::now().time_since_epoch();
+		auto saveSecond = std::chrono::duration_cast<std::chrono::seconds>(saveTime).count();
+		std::string lossStatFileName = rltest::RlSetting::LossStateName + "_" + std::to_string(saveSecond) + ".txt";
+		lossStatOutput = std::ofstream(lossStatFileName);
+
+		logger->info("Loss stats put into {}", lossStatFileName);
+	}
+
+	~TrainObj() {
+		lossStatOutput.close();
 	}
 
 	//TODO: Other constructors
@@ -153,13 +164,29 @@ public:
 		}
 	}
 
+	//loss, value, action, entropy
+	void saveLoss (const std::vector<torch::Tensor>& losses) {
+		logger->info("Save loss ");
+		for (int i = 0; i < losses.size(); i ++) {
+			lossStatOutput << losses[i].item<float>() << ", ";
+		}
+		lossStatOutput << std::endl;
+		lossStatOutput.flush();
+	}
+
 	void updateNet(std::vector<std::vector<torch::Tensor>> inputs, const int sampleNum) {
 		logger->warn("Get loss of nets {}", curIndex);
-		torch::Tensor loss = nets[curIndex]->getLoss(inputs);
+		std::vector<torch::Tensor> losses = nets[curIndex]->getLoss(inputs);
+		saveLoss(losses);
+
+
+		torch::Tensor loss = losses[0];
+//		torch::Tensor loss = nets[curIndex]->getLoss(inputs);
 
 		logger->warn("Optimizer by optimizer {}", curIndex);
 		optimizers[curIndex]->zero_grad();
 		loss.backward();
+		nets[curIndex]->printGrads(); //TODO:
 		optimizers[curIndex]->step();
 
 		logger->warn("Worker set Net {} updated", curIndex);
@@ -254,6 +281,11 @@ RlTrainWorker<NetType, OptType, OptOptionType>::RlTrainWorker(rltest::ReturnCalc
 //vector<Reward> -> {reward}
 template <class NetType, class OptType, class OptOptionType>
 bool RlTrainWorker<NetType, OptType, OptOptionType>::trainingNet() {
+	if (rltest::RlSetting::IsTest) {
+		logger->info("Test, no update ");
+		return false;
+	}
+
 	logger->warn("Get datasize: {}", dataQ.size());
 
 	if (dataQ.size() < rltest::RlSetting::BatchSize) {
@@ -338,27 +370,27 @@ void RlTrainWorker<NetType, OptType, OptOptionType>::trainingWork() {
 	}
 
 	//All proxies waiting for updating
-	std::vector<std::shared_ptr<std::promise<bool>>> promises;
-
-	for (int i = 0; i < netProxies.size(); i ++) {
-			if (workingStatus[i]) {
-				auto promiseObj = std::make_shared<std::promise<bool>>();
-				promises.push_back(promiseObj);
-				netProxies[i]->setUpdating(promiseObj);
-
-				logger->warn("Proxy {} set updating", netProxies[i]->getName());
-		} else {
-			logger->info("Proxy {} is not working, ignore update", netProxies[i]->getName());
-		}
-	}
-	for (int i = 0; i < promises.size(); i ++) {
-		if (workingStatus[i]) {
-			logger->warn("Waiting for promise {}", i);
-			auto futureObj = promises[i]->get_future();
-			workingStatus[i] = futureObj.get();
-			logger->warn("Got promise {}", i);
-		}
-	}
+//	std::vector<std::shared_ptr<std::promise<bool>>> promises;
+//
+//	for (int i = 0; i < netProxies.size(); i ++) {
+//			if (workingStatus[i]) {
+//				auto promiseObj = std::make_shared<std::promise<bool>>();
+//				promises.push_back(promiseObj);
+//				netProxies[i]->setUpdating(promiseObj);
+//
+//				logger->warn("Proxy {} set updating", netProxies[i]->getName());
+//		} else {
+//			logger->info("Proxy {} is not working, ignore update", netProxies[i]->getName());
+//		}
+//	}
+//	for (int i = 0; i < promises.size(); i ++) {
+//		if (workingStatus[i]) {
+//			logger->warn("Waiting for promise {}", i);
+//			auto futureObj = promises[i]->get_future();
+//			workingStatus[i] = futureObj.get();
+//			logger->warn("Got promise {}", i);
+//		}
+//	}
 
 	//clear dirty data
 	while (!DataStoreQ::GetDataQ().isEmpty()) {
@@ -369,7 +401,8 @@ void RlTrainWorker<NetType, OptType, OptOptionType>::trainingWork() {
 	auto& newNet = trainingProxy.getTrainingNet();
 	//update all proxies
 	for (int i = 0; i < netProxies.size(); i ++) {
-		netProxies[i]->setRunning(newNet);
+//		netProxies[i]->setRunning(newNet);
+		netProxies[i]->updateNetworkPtr(newNet);
 		logger->warn("Proxy {} updated network ", netProxies[i]->getName());
 	}
 
@@ -387,7 +420,7 @@ void RlTrainWorker<NetType, OptType, OptOptionType>::start() {
 	auto recorder = RlTestStatRecorder::GetRecorder(rltest::RlSetting::StatsDataName);
 
 	logger->error("------------------------------------> Try to start worker");
-	RandomPolicy policy(0.95);
+	RandomPolicy policy(0.98);
 	RandomPolicy rnPolicy(0.0);
 
 	const int proxyNum = rltest::RlSetting::ProxyNum;

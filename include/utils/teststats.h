@@ -45,11 +45,17 @@ std::ostream& operator<<(std::ostream& os, const RlTestStatData& data);
 
 class RlTestStatRecorder {
 private:
+	enum { RewardTrjLen = 100, };
+
 	const std::string fileName;
 	std::ofstream output;
 	std::chrono::hours lastSaveHour;
 	R1WmQueue<RlTestStatData, 256> dataQ;
 
+	std::vector<float> rewards;
+	uint32_t gameNum;
+	float totalReward;
+	float aveReward;
 
 	RlTestStatRecorder(const std::string outputFileName);
 	//iostream of file.
@@ -61,6 +67,7 @@ public:
 	static std::shared_ptr<RlTestStatRecorder> GetRecorder(const std::string fileName);
 	bool push(RlTestStatData&& data); //Need a copy
 	void write2File();
+	float getBadActionPenalty();
 };
 
 

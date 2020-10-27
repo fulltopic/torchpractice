@@ -238,24 +238,24 @@ void asiotenhoufsm<NetType>::close(bool validFsm) {
 
 	sock.close();
 
-
-	if (validFsm) {
-		if (!net->isRunning()) {
-			logger->error("Set net end in fsm close");
-			if (net->setDetected(validFsm)) {
-				net->setGameEnd();
-			}
-		}
-	} else {
-		while (net->isRunning()) {
-			logger->warn("Waiting for network updating to set fsm invalid");
-			sleep(60);
-		}
-		logger->error("Set net end in fsm close");
-		if (net->setDetected(validFsm)) {
-			net->setGameEnd();
-		}
-	}
+	net->setGameEnd(validFsm);
+//	if (validFsm) {
+//		if (!net->isRunning()) {
+//			logger->error("Set net end in fsm close");
+//			if (net->setDetected(validFsm)) {
+//				net->setGameEnd();
+//			}
+//		}
+//	} else {
+//		while (net->isRunning()) {
+//			logger->warn("Waiting for network updating to set fsm invalid");
+//			sleep(60);
+//		}
+//		logger->error("Set net end in fsm close");
+//		if (net->setDetected(validFsm)) {
+//			net->setGameEnd();
+//		}
+//	}
 
 	logger->error("fsm terminates");
 }
@@ -352,7 +352,7 @@ void asiotenhoufsm<NetType>::heloState(const boost::system::error_code& e, std::
 				RegRcv(authState);
 			}
 		} else if (msg.find("GO") != S::npos) {
-			logger->info("log file: {}", msg);
+			logger->info("{} ---> log file: {}", net->getName(), msg);
 
 			if (send(G::GenGoMsg())) {
 				if (send(G::GenNextReadyMsg())) {
@@ -521,12 +521,22 @@ void asiotenhoufsm<NetType>::joinState(const ErrorCode &e, std::size_t len) {
 			}
 			else if (msgs[i].find("REINIT") != S::npos) {
 				gameBegin = false;
+				lnCount = 0;
 				for (int j = i; j < msgs.size(); j ++) {
 					processGameMsg(msgs[j]); //TODO: REINIT should be the last message
 				}
 				RegRcv(gameState);
 				return;
-			} else if (msgs[i].find("RANKING") != S::npos) {
+			}else if (msgs[i].find("INIT") != S::npos) { //Reconn edge case
+				gameBegin = false;
+				lnCount = 0;
+				for (int j = i; j < msgs.size(); j ++) {
+					processGameMsg(msgs[j]);
+				}
+				RegRcv(gameState);
+				return;
+			}
+			else if (msgs[i].find("RANKING") != S::npos) {
 				RegRcv(joinState);
 			} else {
 				logUnexpMsg("joinState", msgs[i]);
@@ -751,25 +761,25 @@ void asiotenhoufsm<NetType>::sceneEnd2StartTimerHandle(const ErrorCode &e) {
 	} else if (!e) {
 		logger->warn("sceneEnd2StartTimer expiring");
 
-		if (!net->isRunning()) {
-			if (net->setDetected(true)) {
-				net->setGameEnd();
-
-				sock.cancel();
-
-				send(G::GenByeMsg());
-//				sleep(5);
-
-//				send(G::GenHeloMsg(name));
-//				RegRcv(heloState);
-			} else {
-				logger->info("Waiting for network updating");
-			}
-			sceneEnd2StartTimer.expires_from_now(boost::posix_time::seconds(DetectNetUpdateTimeout));
-			sceneEnd2StartTimer.async_wait(boost::bind(&asiotenhoufsm::sceneEnd2StartTimerHandle, this->shared_from_this(),
-					boost::asio::placeholders::error));
-
-		} else {
+//		if (!net->isRunning()) {
+//			if (net->setDetected(true)) {
+//				net->setGameEnd();
+//
+//				sock.cancel();
+//
+//				send(G::GenByeMsg());
+////				sleep(5);
+//
+////				send(G::GenHeloMsg(name));
+////				RegRcv(heloState);
+//			} else {
+//				logger->info("Waiting for network updating");
+//			}
+//			sceneEnd2StartTimer.expires_from_now(boost::posix_time::seconds(DetectNetUpdateTimeout));
+//			sceneEnd2StartTimer.async_wait(boost::bind(&asiotenhoufsm::sceneEnd2StartTimerHandle, this->shared_from_this(),
+//					boost::asio::placeholders::error));
+//
+//		} else {
 			net->setGameEnd(); //setGameEnd so that need not to wait for next INIT message
 
 			sock.cancel();
@@ -782,7 +792,7 @@ void asiotenhoufsm<NetType>::sceneEnd2StartTimerHandle(const ErrorCode &e) {
 					RegRcv(heloState);
 				}
 			}
-		}
+//		}
 	} else {
 		logger->error("sceneEnd2StartTimer interrupted as: {}", e.message());
 	}

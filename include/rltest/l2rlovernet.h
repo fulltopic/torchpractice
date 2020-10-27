@@ -76,9 +76,11 @@ public:
 	void reset();// override;
 
 	void cloneFrom(const GRUL2OverNet& origNet);
-	torch::Tensor getLoss(std::vector<std::vector<torch::Tensor>> inputTensors);
+	std::vector<torch::Tensor> getLoss(std::vector<std::vector<torch::Tensor>> inputTensors);
 
 	static std::string GetName();
+
+	void printGrads();
 };
 }
 

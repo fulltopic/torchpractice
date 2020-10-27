@@ -15,7 +15,9 @@ class Utils {
 public:
 	static bool CompTensorBySeqLen (const torch::Tensor& t0, const torch::Tensor& t1);
 
-	static torch::Tensor BasicReturnCalc(const torch::Tensor reward, const torch::Tensor labels, const int seqLen, float gamma);
+	static torch::Tensor BasicReturnCalc(
+			const torch::Tensor reward, const torch::Tensor labels, const torch::Tensor actions, const int seqLen, float gamma, float penalty);
+
 };
 }
 

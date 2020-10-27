@@ -20,6 +20,8 @@ public:
 	static const int UpdateThreshold;
 	static const float ReturnGamma;
 
+	static const float RewardClip;
+
 //	static const int RnnSeqLen = 27;
 
 	static const int SaveEpochThreshold;
@@ -30,10 +32,12 @@ public:
 	static std::vector<std::string> Names;
 	static const std::string ModelDir;
 	static const std::string StatsDataName;
+	static const std::string LossStateName;
 	static const std::string ServerIp;
 	static const int ServerPort;
 
 	static const bool IsPrivateTest;
+	static const bool IsTest;
 };
 }
 

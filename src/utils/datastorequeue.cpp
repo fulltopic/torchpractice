@@ -9,8 +9,8 @@
 #include "utils/datastorequeue.h"
 
 
-R1WmQueue<std::unique_ptr<StateDataType>, 64>&	DataStoreQ::GetDataQ() {
-	static R1WmQueue<std::unique_ptr<StateDataType>, 64> queue;
+R1WmQueue<std::unique_ptr<StateDataType>, 128>&	DataStoreQ::GetDataQ() {
+	static R1WmQueue<std::unique_ptr<StateDataType>, 128> queue;
 
 	return queue;
 }

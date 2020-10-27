@@ -805,6 +805,30 @@ static void testPad () {
 	cout << "After pad" << endl;
 	cout << t << endl;
 }
+
+static void testSharedPtr () {
+	std::shared_ptr<int> tester;
+	if (tester) {
+		cout << "Valid tester " << tester.get() << endl;
+	} else {
+		cout << "Invalid tester" << endl;
+	}
+
+	std::shared_ptr<int> tester1(new int(2));
+	tester = tester1;
+	if (tester) {
+		cout << "Valid tester " << *(tester.get()) << endl;
+	} else {
+		cout << "Invalid tester" << endl;
+	}
+
+	tester.reset();
+	if (tester) {
+		cout << "Valid tester " << tester.get() << endl;
+	} else {
+		cout << "Invalid tester" << endl;
+	}
+}
 int main(int argc, char** argv) {
 //	testClone();
 //	testCloneable();
@@ -823,9 +847,10 @@ int main(int argc, char** argv) {
 
 //	testVector();
 //	testRefFunc();
-	testUniquePtr();
+//	testUniquePtr();
 
 //	testPad();
 
 //	testZeros();
+	testSharedPtr();
 }

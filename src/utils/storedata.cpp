@@ -12,7 +12,7 @@
 #include <vector>
 #include <torch/torch.h>
 
-StateDataType::StateDataType(): reward(0.0f) {}
+StateDataType::StateDataType(): reward(0.0f){}
 
 std::vector<std::vector<torch::Tensor>> StateDataType::getData() {
 	return {trainStates, trainHStates, trainLabels, trainActions, {torch::tensor(reward)}};

@@ -282,12 +282,12 @@ StealResult TenhouMsgParser::ParseSteal(std::string msg) {
 StealResult TenhouMsgParser::ParseChow (int who, int m) {
 	int chowTile = (m >> 10) & 63;
 	int r = chowTile % 3;
-	Logger::GetLogger()->info("ParseChow {}, {}", chowTile, r);
+	Logger::GetLogger()->debug("ParseChow {}, {}", chowTile, r);
 
 	chowTile /= 3;
 	chowTile = chowTile / 7 * 9 + chowTile % 7;
 	chowTile *= 4;
-	Logger::GetLogger()->info("Chow tile {}", chowTile);
+	Logger::GetLogger()->debug("Chow tile {}", chowTile);
 
 	vector<int> candidates(3, 0);
 	candidates[0] = chowTile + ((m >> 3) & 3);
@@ -345,13 +345,13 @@ StealResult TenhouMsgParser::ParsePong (int who, int m) {
 		}
 
 
-		Logger::GetLogger()->info("Get pong tiles {}, {}, {}", tiles[0], tiles[1], tiles[2]);
+		Logger::GetLogger()->debug("Get pong tiles {}, {}, {}", tiles[0], tiles[1], tiles[2]);
 		return {PongFlag, who, called + base * NumPerTile, tiles};
 	} else {
 		vector<int> tiles { base * NumPerTile, 1 + base * NumPerTile, 2 + base * NumPerTile, 3 + base * NumPerTile};
 		swap(tiles[0], tiles[called]);
 
-		Logger::GetLogger()->info("Get kakan tiles {}, {}, {}, {}", tiles[0], tiles[1], tiles[2], tiles[3]);
+		Logger::GetLogger()->debug("Get kakan tiles {}, {}, {}, {}", tiles[0], tiles[1], tiles[2], tiles[3]);
 		return {KanFlag, who, called + base * NumPerTile, tiles};
 	}
 //    int unused = (m >> 5) & 3;

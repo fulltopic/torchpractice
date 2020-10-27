@@ -26,7 +26,7 @@ private:
 public:
 	//TODO: Remove magic data
 //	static R1WmQueue<std::vector<std::vector<torch::Tensor>>, 64>&
-	static R1WmQueue<std::unique_ptr<StateDataType>, 64>&
+	static R1WmQueue<std::unique_ptr<StateDataType>, 128>&
 	GetDataQ();
 };
 

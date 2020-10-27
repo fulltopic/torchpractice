@@ -28,6 +28,7 @@
 
 #include "rltest/rltestutils.h"
 #include "rltest/rltestsetting.h"
+#include "rltest/gaecalc.h"
 
 #include "rltest/l2rlovernet.h"
 #include "utils/logger.h"
@@ -102,6 +103,27 @@ void GRUL2OverNet::initParams() {
 			}
 			std::cout << "Initialized fc weight " << std::endl;
 		}
+	}
+}
+
+void GRUL2OverNet::printGrads() {
+	Logger::GetLogger()->info("To print grads ");
+
+	auto params = this->named_parameters(true);
+	for (auto ite = params.begin(); ite != params.end(); ite ++) {
+		Logger::GetLogger()->info("Get key: {} ", ite->key());
+		const Tensor paramTensor = ite->value();
+		const Tensor paramGrad = paramTensor.grad();
+
+		auto mean = paramGrad.mean();
+		auto var = paramGrad.var();
+		auto minTensor = paramGrad.min();
+		auto maxTensor = paramGrad.max();
+
+		std::cout << "Mean: ---> " << endl << mean << std::endl;
+		cout << "Var: --> " << endl << var << endl;
+		cout << "Min: --> " << endl << minTensor << endl;
+		cout << "Max: --> " << endl << maxTensor << endl;
 	}
 }
 
@@ -392,13 +414,16 @@ GRUL2OverNet::GRUL2OverNet(GRUL2OverNet&& net):
 //	return *this;
 //}
 
-Tensor GRUL2OverNet::getLoss(vector<vector<Tensor>> inputTensors){
+vector<Tensor> GRUL2OverNet::getLoss(vector<vector<Tensor>> inputTensors){
+	GAECal calc(0.99, 0.95);
+
 	this->train();
 
 	vector<Tensor> inputs = inputTensors[InputIndex];
 	vector<Tensor> actions = inputTensors[ActionIndex];
 	vector<Tensor> rewards = inputTensors[RewardIndex];
 	vector<Tensor> labels = inputTensors[LabelIndex];
+	const int batchSize = inputs.size();
 
 	cout << "Input sizes: " << inputs[0].sizes() << endl;
 	cout << "action sizes: " << actions[0].sizes() << endl;
@@ -407,49 +432,79 @@ Tensor GRUL2OverNet::getLoss(vector<vector<Tensor>> inputTensors){
 
 	cout << "label games: " << labels.size() << endl;
 	cout << "reward games: " << rewards.size() << endl;
-	vector<Tensor> returnTensors;
+	cout << "reward sizes: " << rewards[0].sizes() << endl;
+//	vector<Tensor> returnTensors;
+	vector<Tensor> advs;
+
+	struct SeqReward {
+		int seqLen;
+		Tensor reward;
+	};
+	auto sortSeqReward = [](const SeqReward& t0, const SeqReward& t1) {
+		return t0.seqLen > t1.seqLen;
+	};
+
+	vector<SeqReward> seqRewards;
+	vector<int> seqLens;
 	for (int i = 0; i < rewards.size(); i ++) {
-		Tensor returnTensor = rltest::Utils::BasicReturnCalc(rewards[i], actions[i], actions[i].size(0), RlSetting::ReturnGamma);
-
-		returnTensor = torch::constant_pad_nd(returnTensor, {0, 0, 0, std::min(seqLen, actions[i].size(0)) - actions[i].size(0)});
 		actions[i] = torch::constant_pad_nd(actions[i], {0, 0, 0, std::min(seqLen, actions[i].size(0)) - actions[i].size(0)});
-		labels[i] = torch::constant_pad_nd(labels[i], {0, std::min(seqLen, actions[i].size(0)) - actions[i].size(0)});
-
-//		cout << "action len: " << actions[i].sizes() << endl;
-//		cout << "return len: " << returnTensor.sizes() << endl;
-		returnTensors.push_back(returnTensor);
+		labels[i] = torch::constant_pad_nd(labels[i], {0, std::min(seqLen, labels[i].size(0)) - labels[i].size(0)});
+		labels[i] = labels[i].view({labels[i].size(0), 1});
+		cout << "action len: " << actions[i].sizes() << endl;
+		cout << "labels len: " << labels[i].sizes() << endl;
+		seqLens.push_back(std::min((int)inputs[i].size(0), (int)seqLen));
+		seqRewards.push_back(SeqReward {std::min((int)inputs[i].size(0), (int)seqLen), rewards[i]});
+//		cout << "reward " << i << " sizes: " << rewards[i].sizes() << endl;
 	}
-	cout << "return sizes: " << returnTensors[0].sizes() << endl;
 
 	std::stable_sort(inputs.begin(), inputs.end(), Utils::CompTensorBySeqLen);
 	std::stable_sort(actions.begin(), actions.end(), Utils::CompTensorBySeqLen);
 	std::stable_sort(labels.begin(), labels.end(), Utils::CompTensorBySeqLen);
-	std::stable_sort(returnTensors.begin(), returnTensors.end(), Utils::CompTensorBySeqLen);
+	std::stable_sort(seqRewards.begin(), seqRewards.end(), sortSeqReward);
+//	std::stable_sort(returnTensors.begin(), returnTensors.end(), Utils::CompTensorBySeqLen);
 
 	Tensor action = torch::cat(actions, 0);
-	Tensor returns = torch::cat(returnTensors, 0);
+	Tensor label = torch::cat(labels, 0);
+//	Tensor returns = torch::cat(returnTensors, 0);
 
 
-
-	//TODO: It is not right to just forward {inputs} as inputs of forward
 	vector<Tensor> output = forward(inputs, true);
 	Tensor actionOutput = output[0];
 	Tensor valueOutput = output[1];
 
-	cout << "return sizes: " << returns.sizes() << endl;
+//	cout << "return sizes: " << returns.sizes() << endl;
 	cout << "value sizes: " << valueOutput.sizes() << endl;
 	cout << "actionOutput sizes: " << actionOutput.sizes() << endl;
 	cout << "valueOutput sizes: " << valueOutput.sizes() << endl;
-	Tensor adv = returns - valueOutput;
+
+	int endIndex = 0;
+	vector<Tensor> returnValues;
+	vector<Tensor> advValues;
+	for (int i = 0; i < batchSize; i ++) {
+		Tensor valueInput =  valueOutput.slice(0, endIndex, endIndex + seqLens[i]);
+		endIndex += seqLens[i];
+
+		Tensor returnTensor = calc.calc(valueInput, seqRewards[i].reward).detach(); //TODO: Why detach?
+		returnValues.push_back(returnTensor);
+		Tensor advTensor = calc.calcAdv(valueInput, returnTensor);
+		advValues.push_back(advTensor);
+	}
+	//	cout << "return sizes: " << returnValues[0].sizes() << endl;
+	Tensor adv = torch::cat(advValues, 0);
+	cout << "adv " << endl << adv << endl;
+	adv = adv.view({adv.size(0), 1});
+
+
 	Tensor valueLoss = 0.5 * adv.pow(2).mean();
 
-	Tensor actionLogProbs = torch::log_softmax(actionOutput, -1); //TODO: actionOutput is of fc output
+	Tensor actionLogProbs = torch::log_softmax(actionOutput, -1); //actionOutput is of fc output
 	Tensor actionProbs = torch::softmax(actionOutput, -1);
 	actionProbs = actionProbs.clamp(1.21e-7, 1.0f - 1.21e-7);
 	Tensor entropy = -(actionLogProbs * actionProbs).sum(-1).mean();
 
-	Tensor actPi = actionLogProbs.gather(-1, action);
+	Tensor actPi = actionLogProbs.gather(-1, label);
 	Tensor actionLoss = -(actPi * adv.detach()).mean();
+	cout << "actionLog sizes " << actionLogProbs.sizes() << " ========== " << "actPi sizes " << actPi.sizes() << std::endl;
 
 	Logger::GetLogger()->info("valueLoss: {}", valueLoss.item<float>());
 	Logger::GetLogger()->info("actionLoss: {}", actionLoss.item<float>());
@@ -458,8 +513,82 @@ Tensor GRUL2OverNet::getLoss(vector<vector<Tensor>> inputTensors){
 
 	Tensor loss = valueLoss + actionLoss - entropy * 1e-4;
 
-	return loss;
+//	return loss;
+	return {loss, valueLoss, actionLoss, entropy};
 }
+
+//Tensor GRUL2OverNet::getLoss(vector<vector<Tensor>> inputTensors){
+//	this->train();
+//
+//	vector<Tensor> inputs = inputTensors[InputIndex];
+//	vector<Tensor> actions = inputTensors[ActionIndex];
+//	vector<Tensor> rewards = inputTensors[RewardIndex];
+//	vector<Tensor> labels = inputTensors[LabelIndex];
+//
+//	cout << "Input sizes: " << inputs[0].sizes() << endl;
+//	cout << "action sizes: " << actions[0].sizes() << endl;
+//	cout << "reward sizes: " << rewards[0].sizes() << endl;
+//	cout << "label sizes: " << labels[0].sizes() << endl;
+//
+//	cout << "label games: " << labels.size() << endl;
+//	cout << "reward games: " << rewards.size() << endl;
+//	vector<Tensor> returnTensors;
+//	for (int i = 0; i < rewards.size(); i ++) {
+//		Tensor returnTensor = rltest::Utils::BasicReturnCalc(
+//				rewards[i], labels[i], actions[i], actions[i].size(0), RlSetting::ReturnGamma, 0.0f);
+//
+//		returnTensor = torch::constant_pad_nd(returnTensor, {0, 0, 0, std::min(seqLen, actions[i].size(0)) - actions[i].size(0)});
+//		actions[i] = torch::constant_pad_nd(actions[i], {0, 0, 0, std::min(seqLen, actions[i].size(0)) - actions[i].size(0)});
+//		labels[i] = torch::constant_pad_nd(labels[i], {0, std::min(seqLen, actions[i].size(0)) - actions[i].size(0)});
+//
+////		cout << "action len: " << actions[i].sizes() << endl;
+////		cout << "return len: " << returnTensor.sizes() << endl;
+//		returnTensors.push_back(returnTensor);
+//	}
+//	cout << "return sizes: " << returnTensors[0].sizes() << endl;
+//
+//	std::stable_sort(inputs.begin(), inputs.end(), Utils::CompTensorBySeqLen);
+//	std::stable_sort(actions.begin(), actions.end(), Utils::CompTensorBySeqLen);
+//	std::stable_sort(labels.begin(), labels.end(), Utils::CompTensorBySeqLen);
+//	std::stable_sort(returnTensors.begin(), returnTensors.end(), Utils::CompTensorBySeqLen);
+//
+//	Tensor action = torch::cat(actions, 0);
+//	Tensor label = torch::cat(labels, 0);
+//	label = label.view({label.size(0), 1});
+//	Tensor returns = torch::cat(returnTensors, 0);
+//
+//
+//
+//	//TODO: It is not right to just forward {inputs} as inputs of forward
+//	vector<Tensor> output = forward(inputs, true);
+//	Tensor actionOutput = output[0];
+//	Tensor valueOutput = output[1];
+//
+//	cout << "return sizes: " << returns.sizes() << endl;
+//	cout << "value sizes: " << valueOutput.sizes() << endl;
+//	cout << "actionOutput sizes: " << actionOutput.sizes() << endl;
+//	cout << "valueOutput sizes: " << valueOutput.sizes() << endl;
+//	Tensor adv = returns - valueOutput;
+//	Tensor valueLoss = 0.5 * adv.pow(2).mean();
+//
+//	Tensor actionLogProbs = torch::log_softmax(actionOutput, -1); //TODO: actionOutput is of fc output
+//	Tensor actionProbs = torch::softmax(actionOutput, -1);
+//	actionProbs = actionProbs.clamp(1.21e-7, 1.0f - 1.21e-7);
+//	Tensor entropy = -(actionLogProbs * actionProbs).sum(-1).mean();
+//
+//	Tensor actPi = actionLogProbs.gather(-1, label);
+//	Tensor actionLoss = -(actPi * adv.detach()).mean();
+//	cout << "actionLog sizes " << actionLogProbs.sizes() << " ========== " << "actPi sizes " << actPi.sizes() << std::endl;
+//
+//	Logger::GetLogger()->info("valueLoss: {}", valueLoss.item<float>());
+//	Logger::GetLogger()->info("actionLoss: {}", actionLoss.item<float>());
+//	Logger::GetLogger()->info("entropy: {}", entropy.item<float>());
+//	Logger::GetLogger()->info("-----------------------------------------> ");
+//
+//	Tensor loss = valueLoss + actionLoss - entropy * 1e-4;
+//
+//	return loss;
+//}
 
 std::string GRUL2OverNet::GetName() {
 	return "GRUL2OverNet";

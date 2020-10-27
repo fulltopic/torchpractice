@@ -34,7 +34,7 @@ std::ostream& operator<<(std::ostream& os, const RlTestStatData& data) {
 
 //TODO: Switch file name per day
 RlTestStatRecorder::RlTestStatRecorder(const std::string outputFileName)
-	: fileName(outputFileName)
+	: fileName(outputFileName), gameNum(0), totalReward(0.0), aveReward(0.0)
 //, output(outputFileName)
 {
 	auto createTime = std::chrono::system_clock::now().time_since_epoch();
@@ -66,8 +66,21 @@ void RlTestStatRecorder::write2File() {
 		while (!dataQ.isEmpty()) {
 			auto data = dataQ.pop();
 			output << data << std::endl;
+
+			gameNum ++;
+			float lastReward = 0;
+			if (gameNum > RewardTrjLen) {
+				int index = (gameNum % RewardTrjLen) - 1;
+				lastReward = rewards[index];
+				rewards[index] = data.reward;
+			} else {
+				rewards.push_back(data.reward);
+			}
+			totalReward = totalReward + data.reward - lastReward;
 		}
 		output.flush();
+		aveReward = totalReward / (float)(rewards.size());
+
 
 		auto currTime = std::chrono::system_clock::now().time_since_epoch();
 		auto currHour = std::chrono::duration_cast<std::chrono::hours>(currTime);
@@ -82,4 +95,6 @@ void RlTestStatRecorder::write2File() {
 	}
 }
 
-
+float RlTestStatRecorder::getBadActionPenalty() {
+	return aveReward - 0.1;
+}

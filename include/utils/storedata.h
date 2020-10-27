@@ -26,6 +26,7 @@ struct StateDataType {
 	ItemDataType trainHStates;
 	ItemDataType trainLabels; //action executed
 	ItemDataType trainActions; //action calculated
+//	ItemDataType trainRewards;
 	float reward;
 
 	StateDataType();

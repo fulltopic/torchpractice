@@ -76,8 +76,9 @@ enum NetStatus {
 private:
 	const std::string name;
 	NetStatus netStatus;
-	std::mutex netStatusMutex;
-	std::condition_variable netStatusCond;
+	std::mutex netUpdateMutex;
+	std::shared_ptr<NetType> backupNetPtr;
+//	std::condition_variable netStatusCond;
 
 //TODO: Remove reference
 //	TenhouState& innerState;
@@ -107,7 +108,7 @@ private:
 	std::shared_ptr<NetType> net;
 
 	std::shared_ptr<spdlog::logger> logger;
-	std::shared_ptr<std::promise<bool>> statusPromise;
+//	std::shared_ptr<std::promise<bool>> statusPromise;
 
 	std::string processInitMsg(std::string msg);
 	std::string processDoraMsg(std::string msg);
@@ -153,20 +154,23 @@ public:
 	~NetProxy() = default;
 	std::string processMsg(std::string msg);
 	void reset();
-	void updateNet(std::shared_ptr<NetType> net);
+//	void updateNet(std::shared_ptr<NetType> net);
 
-	bool isUpdating() { return netStatus == Updating; }
-	bool isRunning() { return netStatus == Running; }
-	bool setDetected(bool status);
-	void setUpdating(std::shared_ptr<std::promise<bool>> promiseObj);
-	void setRunning(std::shared_ptr<NetType> newNet);
+//	bool isUpdating() { return netStatus == Updating; }
+//	bool isRunning() { return netStatus == Running; }
+//	bool setDetected(bool status);
+//	void setUpdating(std::shared_ptr<std::promise<bool>> promiseObj);
+//	void setRunning(std::shared_ptr<NetType> newNet);
 
-	void setGameEnd();
+	void setGameEnd(bool validFsm = true);
 	inline std::string getName() { return name; }
 
 	inline void setStatsRecorder (std::shared_ptr<RlTestStatRecorder>& recorder) {
 		statsRecorder = recorder;
 	}
+
+	bool updateNetworkPtr(std::shared_ptr<NetType> newNet);
+	bool getUpdatedNet();
 };
 
 
@@ -177,6 +181,18 @@ using G = TenhouMsgGenerator;
 template<class NetType>
 void NetProxy<NetType>::updateLabelStore(int label) {
 	stateData->trainLabels.push_back(torch::tensor(label));
+
+	//TODO: The final reward push_back
+//	float reward = 0;
+//	if (label == ReachAction) {
+//		reward += -10;
+//	}
+//	long action = stateData->trainActions[stateData->trainActions.size() - 1].item<long>();
+//	if (action != label) {
+//		logger->warn("an invalid action");
+//		reward += statsRecorder->getBadActionPenalty();
+//	}
+//	stateData->trainRewards.push_back(torch::tensor(reward));
 }
 
 template<class NetType>
@@ -223,14 +239,18 @@ torch::Tensor NetProxy<NetType>::updateNet(int indType) {
 		logger->debug("updateNet gru");
 		torch::Tensor state = innerState.getState(indType);
 
+
 		stateData->trainStates.push_back(state.detach().clone());
 		stateData->trainHStates.push_back(gruHState.detach().clone());
 
 		std::vector<torch::Tensor> netOutput = net->forward(std::vector{state, gruHState, torch::tensor(step)});
 		// get max index
 		torch::Tensor actProb = netOutput[0];
+
 		actProb = actProb.clamp(1.21e-7, 1.0f - 1.21e-7);
 		torch::Tensor action = actProb.multinomial(1, false);
+
+
 		stateData->trainActions.push_back(action);
 
 		gruHState = netOutput[1];
@@ -267,7 +287,7 @@ void NetProxy<NetType>::reset() {
 }
 
 
-//TODO: Reset
+//TODO: set owner
 template <class NetType>
 std::string NetProxy<NetType>::processInitMsg(std::string msg) {
 	gameSeq ++;
@@ -329,12 +349,14 @@ std::string NetProxy<NetType>::processAccept(std::string msg) {
 	for (int i = 0; i < candidates.size(); i ++) {
 		logger->debug("Get candidate {}", candidates[i]);
 	}
-	//TODO: state take consideration of kan
-//	auto output = net->forward(innerState.getState(StealType::DropType));
+
+	//	auto output = net->forward(innerState.getState(StealType::DropType));
 	torch::Tensor output = updateNet(StealType::DropType);
 
 	int action = policy.getAction(output, candidates);
-	updateLabelStore(action); //TODO: For rl
+	updateLabelStore(action);
+
+
 	logger->debug("Extract action from policy {}", action);
 	//kan
 	//4 --> ankan
@@ -581,6 +603,7 @@ std::string NetProxy<NetType>::processReachInd(int raw) {
 	}
 }
 
+//TODO: To deal with kan operations
 template <class NetType>
 std::string NetProxy<NetType>::processKanInd(int fromWho, int raw) {
 	innerState.dropTile(fromWho, raw);
@@ -607,6 +630,7 @@ std::string NetProxy<NetType>::processPongKanInd(int fromWho, int raw) {
 		return G::GenPongMsg(pongTiles);
 	} else if (action == KaKanAction || action == MinKanAction || action == AnKanAction) {
 		//TODO: Distinguish them
+		logger->warn("Want to kan: {}", action);
 		return G::GenKanMsg(raw);
 	} else {
 		return G::GenNoopMsg();
@@ -707,76 +731,117 @@ std::string NetProxy<NetType>::processMsg(std::string msg) {
 	}
 }
 
-template <class NetType>
-void NetProxy<NetType>::setUpdating(std::shared_ptr<std::promise<bool>> promiseObj) {
-	logger->warn("NetProxy to set updating: {}", getName());
-	netStatus = Updating;
-
-//	std::unique_lock<std::mutex> lock(netStatusMutex);
-//	while(netStatus != Detected) {
-//		netStatusCond.wait(lock);
-//	}
+//template <class NetType>
+//void NetProxy<NetType>::setUpdating(std::shared_ptr<std::promise<bool>> promiseObj) {
+//	logger->warn("NetProxy to set updating: {}", getName());
+//	netStatus = Updating;
 //
-//	promiseObj->set_value(true);
-//	logger->warn("Network detected updating: {}", getName());
+////	std::unique_lock<std::mutex> lock(netStatusMutex);
+////	while(netStatus != Detected) {
+////		netStatusCond.wait(lock);
+////	}
+////
+////	promiseObj->set_value(true);
+////	logger->warn("Network detected updating: {}", getName());
+////	return;
+//	statusPromise = promiseObj;
+//	logger->warn("Network set updating ");
 //	return;
-	statusPromise = promiseObj;
-	logger->warn("Network set updating ");
-	return;
-}
-
-template <class NetType>
-bool NetProxy<NetType>::setDetected(bool status) {
-	logger->warn("NetProxy try to set detected: {}", getName());
-//	std::unique_lock<std::mutex> lock(netStatusMutex);
+//}
+//
+//template <class NetType>
+//bool NetProxy<NetType>::setDetected(bool status) {
+//	logger->warn("NetProxy try to set detected: {}", getName());
+////	std::unique_lock<std::mutex> lock(netStatusMutex);
+////
+////	if (netStatus == Updating) {
+////		netStatus = Detected;
+////		netStatusCond.notify_one();
+////		logger->warn("NetProxy notified detected: {}", getName());
+////		return true;
+////	} else if (netStatus == Detected) {
+////		logger->warn("NetProxy had been notified by fsm: {}", getName());
+////		return false;
+////	}	else {
+////		logger->info("NetProxy is running: {}", getName());
+////		return false;
+////	}
 //
 //	if (netStatus == Updating) {
-//		netStatus = Detected;
-//		netStatusCond.notify_one();
-//		logger->warn("NetProxy notified detected: {}", getName());
-//		return true;
+//		if (!statusPromise) {
+//			logger->error("NetProxy no promise set: {}", getName());
+//			return false;
+//		} else {
+//			logger->warn("NetProxy to set detected: {}", getName());
+//			netStatus = Detected;
+//			statusPromise->set_value(status);
+//			statusPromise.reset();
+//			return true;
+//		}
 //	} else if (netStatus == Detected) {
 //		logger->warn("NetProxy had been notified by fsm: {}", getName());
 //		return false;
-//	}	else {
+//	} else {
 //		logger->info("NetProxy is running: {}", getName());
 //		return false;
 //	}
+//}
+//
+//template <class NetType>
+//void NetProxy<NetType>::setRunning(std::shared_ptr<NetType> newNet) {
+//	logger->warn("NetProxy set running again: {}", getName());
+//	net = newNet;
+//	netStatus = Running;
+//}
 
-	if (netStatus == Updating) {
-		if (!statusPromise) {
-			logger->error("NetProxy no promise set: {}", getName());
-			return false;
-		} else {
-			logger->warn("NetProxy to set detected: {}", getName());
-			netStatus = Detected;
-			statusPromise->set_value(status);
-			statusPromise.reset();
-			return true;
-		}
-	} else if (netStatus == Detected) {
-		logger->warn("NetProxy had been notified by fsm: {}", getName());
-		return false;
+template <class NetType>
+bool NetProxy<NetType>::updateNetworkPtr(std::shared_ptr<NetType> newNet) {
+	std::unique_lock<std::mutex> lock(netUpdateMutex);
+	backupNetPtr = newNet;
+
+	return true;
+}
+
+template <class NetType>
+bool NetProxy<NetType>::getUpdatedNet() {
+	std::unique_lock<std::mutex> lock(netUpdateMutex);
+
+	//TODO: Check null of shared_ptr
+	if (backupNetPtr) {
+		net = backupNetPtr;
+		backupNetPtr.reset();
+		return true;
 	} else {
-		logger->info("NetProxy is running: {}", getName());
 		return false;
 	}
 }
 
 template <class NetType>
-void NetProxy<NetType>::setRunning(std::shared_ptr<NetType> newNet) {
-	logger->warn("NetProxy set running again: {}", getName());
-	net = newNet;
-	netStatus = Running;
-}
-
-template <class NetType>
-void NetProxy<NetType>::setGameEnd() {
+void NetProxy<NetType>::setGameEnd(bool validFsm) {
 	logger->warn("NetProxy set game end: {}", getName());
 
+	if (getUpdatedNet()) {
+		logger->warn("Outdated data, drop it");
+		stateData = std::make_unique<StateDataType>();
+		return;
+	}
+
+	//TODO: ambiguous definition of validFsm
+	if (!validFsm) {
+		logger->warn("broken game, drop data");
+		stateData = std::make_unique<StateDataType>();
+		return;
+	}
+
 	if (!isTestPlayer) {
-		if (!DataStoreQ::GetDataQ().push(std::move(stateData))) {
-			logger->error("Failed to push data, queue busy: {}",  getName());
+		if (stateData) { //not nullptr
+			if (stateData->trainStates.size() > 1) { //norm nan in single element case, and 1 step chance is slim
+				if (!DataStoreQ::GetDataQ().push(std::move(stateData))) {
+					logger->error("Failed to push data, queue busy: {}",  getName());
+				}
+			} else {
+				logger->warn("Drop case with only one step");
+			}
 		}
 	} else {
 			logger->info("TestPlayer drop state data {}", getName());

@@ -155,7 +155,7 @@ Tensor GRUL2RLCombNet::getLoss(vector<vector<Tensor>> inputTensors){
 
 	vector<Tensor> returnTensors;
 	for (int i = 0; i < rewards.size(); i ++) {
-		Tensor returnTensor = rltest::Utils::BasicReturnCalc(rewards[i], {}, inputs[i].size(0), RlSetting::ReturnGamma);
+		Tensor returnTensor = rltest::Utils::BasicReturnCalc(rewards[i], actions[i], actions[i], inputs[i].size(0), RlSetting::ReturnGamma, 0);
 		returnTensors.push_back(returnTensor);
 	}
 

@@ -19,9 +19,11 @@ bool Utils::CompTensorBySeqLen (const torch::Tensor& t0, const torch::Tensor& t1
 }
 
 //TODO: Normalize rewards
-Tensor Utils::BasicReturnCalc(const Tensor rewardTensor, const Tensor labels, const int seqLen, float gamma) {
+Tensor Utils::BasicReturnCalc(
+		const Tensor rewardTensor, const Tensor labels, const Tensor actions, const int seqLen, float gamma, float penalty) {
 	float reward = rewardTensor.item<float>();
 	long* labelPtr = labels.data_ptr<long>();
+	long* actionPtr = actions.data_ptr<long>();
 
 	Tensor returnTensor = torch::zeros({seqLen, 1});
 	float* returnPtr = returnTensor.data_ptr<float>();
@@ -31,12 +33,18 @@ Tensor Utils::BasicReturnCalc(const Tensor rewardTensor, const Tensor labels, co
 		if (labelPtr[i] == ReachAction) {
 			returnValue += -10; //TODO: 10 magic value
 		}
-		returnPtr[i] = returnValue;
+		if (labelPtr[i] != actionPtr[i]) {
+			std::cout << "Mismatch " << labelPtr[i] << " != " << actionPtr[i] << std::endl;
+			returnPtr[i] += penalty;
+		}
+		returnPtr[i] += returnValue;
 		returnValue *= gamma;
 	}
 
 	return returnTensor;
 }
+
 }
+
 
 

@@ -7,4 +7,5 @@ add_library(rltest OBJECT
 							rltestsetting.cpp
 							returncal.cpp
 							purerewardcal.cpp
+							gaecalc.cpp
 							)
