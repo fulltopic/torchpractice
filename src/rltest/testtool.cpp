@@ -829,6 +829,12 @@ static void testSharedPtr () {
 		cout << "Invalid tester" << endl;
 	}
 }
+
+static void testVec () {
+	std::map<int, std::vector<int>> table;
+	table.insert(std::pair<int, std::vector<int>>(1, {1, 2}));
+}
+
 int main(int argc, char** argv) {
 //	testClone();
 //	testCloneable();

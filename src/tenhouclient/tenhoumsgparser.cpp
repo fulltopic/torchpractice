@@ -713,7 +713,7 @@ StealType TenhouMsgParser::GetIndType(const string msg) {
 			case 15:
 			case 16:
 			case 48:
-			case 64: // Don't know what
+			case 64: // Don't know what (yao9)
 				return StealType::RonType;
 			case 32:
 				return StealType::ReachType;

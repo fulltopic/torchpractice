@@ -13,7 +13,7 @@ namespace rltest {
 const int RlSetting::ProxyNum = 4;
 const int RlSetting::ThreadNum = 4;
 const int RlSetting::BatchSize = 8;
-const int RlSetting::UpdateThreshold = 4; //TODO: update network in time
+const int RlSetting::UpdateThreshold = 64; //TODO: update network in time
 
 const float RlSetting::ReturnGamma = 0.9; //TODO: Refer paper for proper gamma
 const float RlSetting::RewardClip = 100;
@@ -21,8 +21,10 @@ const float RlSetting::RewardClip = 100;
 //const int RlSetting::NetNum = 2;
 const int RlSetting::SaveEpochThreshold = 1;
 
-const std::string RlSetting::ServerIp = "133.242.10.78";
-const int RlSetting::ServerPort = 10080;
+//const std::string RlSetting::ServerIp = "133.242.10.78";
+//const int RlSetting::ServerPort = 10080;
+const std::string RlSetting::ServerIp = "127.0.0.1";
+const int RlSetting::ServerPort = 55555;
 
 const bool RlSetting::IsPrivateTest = false;
 const bool RlSetting::IsTest = false;

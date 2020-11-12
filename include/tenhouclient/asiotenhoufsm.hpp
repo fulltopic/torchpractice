@@ -8,12 +8,6 @@
 #ifndef INCLUDE_TENHOUCLIENT_ASIOTENHOUFSM_HPP_
 #define INCLUDE_TENHOUCLIENT_ASIOTENHOUFSM_HPP_
 
-#include <iostream>
-#include <string>
-#include <boost/array.hpp>
-#include <boost/asio.hpp>
-#include <boost/bind/bind.hpp>
-#include <boost/enable_shared_from_this.hpp>
 
 //#include "tenhoufsm.h"
 #include "netproxy.hpp"
@@ -669,7 +663,7 @@ template<class NetType>
 void asiotenhoufsm<NetType>::gameState(const ErrorCode &e, std::size_t len) {
 	if ((!e) || (e == boost::asio::error::message_size)) {
 		S msg (rcvBuf.data(), len);
-		logger->debug("game received msg: {}", msg);
+		logger->debug("game received msg: {} ---> {}", len, msg);
 
 		if (!U::IsGameMsg(msg)) {
 			logger->warn("Received unexpected msg: {}", msg);
@@ -761,38 +755,16 @@ void asiotenhoufsm<NetType>::sceneEnd2StartTimerHandle(const ErrorCode &e) {
 	} else if (!e) {
 		logger->warn("sceneEnd2StartTimer expiring");
 
-//		if (!net->isRunning()) {
-//			if (net->setDetected(true)) {
-//				net->setGameEnd();
-//
-//				sock.cancel();
-//
-//				send(G::GenByeMsg());
-////				sleep(5);
-//
-////				send(G::GenHeloMsg(name));
-////				RegRcv(heloState);
-//			} else {
-//				logger->info("Waiting for network updating");
+		net->setGameEnd(); //setGameEnd so that need not to wait for next INIT message
+		sock.cancel();
+//		//Maybe an extra message
+//		if (send(G::GenByeMsg())) {
+//			sleep(5);
+//			if (send(G::GenHeloMsg(name))) {
+//				RegRcv(heloState);
 //			}
-//			sceneEnd2StartTimer.expires_from_now(boost::posix_time::seconds(DetectNetUpdateTimeout));
-//			sceneEnd2StartTimer.async_wait(boost::bind(&asiotenhoufsm::sceneEnd2StartTimerHandle, this->shared_from_this(),
-//					boost::asio::placeholders::error));
-//
-//		} else {
-			net->setGameEnd(); //setGameEnd so that need not to wait for next INIT message
-
-			sock.cancel();
-
-			//Maybe an extra message
-			if (send(G::GenByeMsg())) {
-				sleep(5);
-
-				if (send(G::GenHeloMsg(name))) {
-					RegRcv(heloState);
-				}
-			}
 //		}
+		toReset();
 	} else {
 		logger->error("sceneEnd2StartTimer interrupted as: {}", e.message());
 	}

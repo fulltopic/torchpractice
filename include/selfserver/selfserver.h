@@ -1,0 +1,54 @@
+/*
+ * selfserver.h
+ *
+ *  Created on: Oct 27, 2020
+ *      Author: zf
+ */
+
+#ifndef INCLUDE_SELFSERVER_SELFSERVER_H_
+#define INCLUDE_SELFSERVER_SELFSERVER_H_
+
+#include <map>
+#include <ctime>
+#include <iostream>
+#include <string>
+#include <mutex>
+
+#include <boost/bind/bind.hpp>
+#include <boost/asio.hpp>
+
+#include "room.h"
+#include "clientconn.h"
+
+class SelfServer:
+		public std::enable_shared_from_this<SelfServer>  {
+private:
+	enum {
+		CleanUpTimeout = 60 * 2,
+	};
+	std::map<uint32_t, std::shared_ptr<Room>> rooms;
+	uint32_t roomSeq;
+
+	const int port;
+	std::mutex roomMutex;
+	std::shared_ptr<Room> curRoom;
+	int curClientIndex;
+
+	boost::asio::io_context& ioService;
+	boost::asio::ip::tcp::acceptor acceptor;
+	boost::asio::deadline_timer pollTimer;
+
+	void handleAccept(std::shared_ptr<ClientConn> client, const boost::system::error_code& error);
+	void handleRoomPoll(const boost::system::error_code& error);
+
+	std::pair<std::shared_ptr<Room>, int> getRoomIndex();
+
+public:
+	SelfServer(int iPort, boost::asio::io_context& service);
+	void start();
+	void accept();
+};
+
+
+
+#endif /* INCLUDE_SELFSERVER_SELFSERVER_H_ */

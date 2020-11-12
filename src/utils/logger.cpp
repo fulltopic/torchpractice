@@ -6,7 +6,7 @@
  */
 
 
-#include "../../include/utils/logger.h"
+#include "utils/logger.h"
 
 #include "spdlog/sinks/daily_file_sink.h"
 #include "spdlog/sinks/rotating_file_sink.h"

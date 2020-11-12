@@ -43,6 +43,7 @@ add_subdirectory(src/policy)
 add_subdirectory(src/gymtest)
 add_subdirectory(src/rltest)
 add_subdirectory(src/utils)
+add_subdirectory(src/selfserver)
 
 link_directories(${CAFFE2_LIB_PATH})
 
@@ -252,3 +253,14 @@ target_link_libraries(testtool ${shared_libs} ${static_libs})
 add_executable(teststrand src/rltest/teststrand.cpp)
 target_compile_features(teststrand PUBLIC cxx_range_for)
 target_link_libraries(teststrand ${shared_libs} ${static_libs})
+
+
+
+########################################### Server test ########################################
+add_executable(testserverutils src/selfserver/testutils.cpp $<TARGET_OBJECTS:rltest> $<TARGET_OBJECTS:selfserver> $<TARGET_OBJECTS:tenhouclient> $<TARGET_OBJECTS:nets> $<TARGET_OBJECTS:utils>)
+target_compile_features(testserverutils PUBLIC cxx_range_for)
+target_link_libraries(testserverutils ${shared_libs} ${static_libs})
+
+add_executable(testselfserver src/selfserver/testserver.cpp $<TARGET_OBJECTS:rltest> $<TARGET_OBJECTS:selfserver> $<TARGET_OBJECTS:tenhouclient> $<TARGET_OBJECTS:nets> $<TARGET_OBJECTS:utils>)
+target_compile_features(testselfserver PUBLIC cxx_range_for)
+target_link_libraries(testselfserver ${shared_libs} ${static_libs})

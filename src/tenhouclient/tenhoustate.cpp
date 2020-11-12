@@ -426,10 +426,12 @@ void BaseState::get4GroupTiles(vector<int>& nums, set<int>& tiles, bool hasPair)
 		cout << "Trial failure" << endl;
 		return;
 	} else if (count == 2) {
-		for (int i = startIndex; i < nums.size(); i ++) {
-			if (nums[i] > 0) {
-				cout << "PUSHED0 " << i << endl;
-				tiles.insert(i);
+		if (!hasPair) {
+			for (int i = startIndex; i < nums.size(); i ++) {
+				if (nums[i] > 0) {
+					cout << "PUSHED0 " << i << endl;
+					tiles.insert(i);
+				}
 			}
 		}
 		return;
@@ -514,6 +516,16 @@ void BaseState::get4GroupTiles(vector<int>& nums, set<int>& tiles, bool hasPair)
 				nums[i] -= 3;
 				get4GroupTiles(nums, tiles, hasPair);
 				nums[i] += 3;
+//				break;
+			}
+		}
+
+		//try kan
+		for (int i = startIndex; i < nums.size(); i ++) {
+			if (nums[i] >= 4) {
+				nums[i] -= 4;
+				get4GroupTiles(nums, tiles, hasPair);
+				nums[i] += 4;
 //				break;
 			}
 		}

@@ -198,6 +198,11 @@ void NetProxy<NetType>::updateLabelStore(int label) {
 template<class NetType>
 void NetProxy<NetType>::updateReward(float reward) {
 	stateData->reward += reward;
+	if (stateData->reward < 0) {
+		stateData->reward = -10;
+ 	} else if (stateData->reward > 0) {
+ 		stateData->reward = 10;
+ 	}
 }
 
 //template <class NetType>
@@ -836,9 +841,9 @@ void NetProxy<NetType>::setGameEnd(bool validFsm) {
 	if (!isTestPlayer) {
 		if (stateData) { //not nullptr
 			if (stateData->trainStates.size() > 1) { //norm nan in single element case, and 1 step chance is slim
-				if (!DataStoreQ::GetDataQ().push(std::move(stateData))) {
-					logger->error("Failed to push data, queue busy: {}",  getName());
-				}
+//				if (!DataStoreQ::GetDataQ().push(std::move(stateData))) {
+//					logger->error("Failed to push data, queue busy: {}",  getName());
+//				}
 			} else {
 				logger->warn("Drop case with only one step");
 			}
