@@ -66,6 +66,7 @@ enum LstmStatePos {
 	OyaPos = ReachPos + 1,
 	WinPos = OyaPos + 1,
 	DummyPos = WinPos + 1,
+	FuritenPos = DummyPos,
 	StateLen = DummyPos + 1,
 
 	ChowPos = TileNum,
@@ -90,6 +91,7 @@ protected:
 
 	bool isReach;
 	bool isOwner;
+	bool isFuriten;
 
 	std::shared_ptr<spdlog::logger>& logger;
 	std::set<int> doras;
@@ -118,6 +120,7 @@ public:
 	inline void setOwner(int oya) { isOwner = (oya == ME); }
 	virtual bool isReached(int playerIndex);
 	virtual torch::Tensor getState(int indType);
+	void setFuriten(int playerIndex, bool furiten);
 	//For RNN
 //	virtual void updateState(std::vector<torch::Tensor> newStates);
 

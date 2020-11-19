@@ -30,6 +30,7 @@ enum GameMsgType {
 	DoraMsg,
 
 	REINITMsg,
+	FuritenMsg,
 
 	InvalidMsg,
 };
@@ -49,6 +50,7 @@ enum StealType {
 };
 
 using AcceptResult = int;
+using FuritenResult = int;
 
 struct DropResult {
 	int playerIndex;
@@ -132,6 +134,7 @@ public:
 
 	static DropResult ParseDrop (std::string msg);
 	static AcceptResult ParseAccept (std::string msg);
+	static FuritenResult ParseFuriten (std::string msg);
 
 	static StealResult ParseSteal(std::string msg);
 	static int ParseHead(const std::string head, const std::string msg);
@@ -160,6 +163,7 @@ public:
 	static bool IsNMsg(const std::string msg);
 	static bool IsIndMsg(const std::string msg);
 	static bool IsSilentMsg(const std::string msg);
+	static bool IsFuritenMsg(const std::string& msg);
 	static GameMsgType GetMsgType(const std::string msg);
 
 	static StealType GetIndType(const std::string msg);

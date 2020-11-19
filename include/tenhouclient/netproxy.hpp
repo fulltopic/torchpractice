@@ -116,6 +116,7 @@ private:
 	std::string processAccept(std::string msg);
 	std::string processNMsg(std::string msg);
 	std::string processReachMsg(std::string msg);
+	std::string processFuritenMsg(std::string msg);
 	std::string processIndicatorMsg(std::string msg);
 	std::string processReachInd(int raw);
 	std::string processChowInd(int fromWho, int raw);
@@ -347,12 +348,12 @@ std::string NetProxy<NetType>::processAccept(std::string msg) {
 	logger->debug("Added tile for accept");
 //	std::cout << "innerState: " << &innerState << std::endl;
 
-	logger->debug("Before getCandidates");
+//	logger->debug("Before getCandidates");
 //	innerState.printTiles();
 	auto candidates = innerState.getCandidates(StealType::DropType, rc);
-	logger->debug("After candidates {}", candidates.size());
+//	logger->debug("After candidates {}", candidates.size());
 	for (int i = 0; i < candidates.size(); i ++) {
-		logger->debug("Get candidate {}", candidates[i]);
+//		logger->debug("Get candidate {}", candidates[i]);
 	}
 
 	//	auto output = net->forward(innerState.getState(StealType::DropType));
@@ -439,6 +440,14 @@ std::string NetProxy<NetType>::processReachMsg(std::string msg) {
 	ReachResult rc = P::ParseReach(msg);
 	innerState.setReach(rc.playerIndex);
 
+	return StateReturnType::Nothing;
+}
+
+template <class NetType>
+std::string NetProxy<NetType>::processFuritenMsg(std::string msg) {
+	FuritenResult rc = P::ParseFuriten(msg);
+	innerState.setFuriten(rc, true);
+	//TODO: Don't know which message to remove furiten state
 	return StateReturnType::Nothing;
 }
 
@@ -724,6 +733,8 @@ std::string NetProxy<NetType>::processMsg(std::string msg) {
 		return processNMsg(msg);
 	case ReachMsg:
 		return processReachMsg(msg);
+	case FuritenMsg:
+		return processFuritenMsg(msg);
 	case GameEndMsg:
 		return processGameEndInd(msg);
 	case SilentMsg:

@@ -84,14 +84,17 @@ void SelfServer::handleAccept(std::shared_ptr<ClientConn> client, const boost::s
 	if (!error) {
 		client->start();
 		accept();
+	} else {
+		logger->error("===================================================================> \n Failed to accept in server: {}", error.message());
 	}
 }
 
 void SelfServer::handleRoomPoll(const boost::system::error_code& error) {
+	logger->warn("handleRoomPoll");
 	if (!error) {
 		for (auto ite = rooms.begin(); ite != rooms.end(); ) {
 			if (!ite->second->isWorking()) {
-				logger->info("To remove room {}", ite->second->seq);
+				logger->warn("To remove room {}", ite->second->seq);
 				ite = rooms.erase(ite);
 			} else {
 				ite ++;

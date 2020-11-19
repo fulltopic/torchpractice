@@ -50,10 +50,10 @@ vector<string> TenhouMsgParser::ParseValues(string msg, const string head, const
 	static auto logger = Logger::GetLogger();
 
 	string valueMsg = RemoveHead(head, msg);
-	logger->debug("Message after head: {}", valueMsg);
+//	logger->debug("Message after head: {}", valueMsg);
 	vector<string> items;
 	split(items, valueMsg, is_any_of(token), token_compress_on);
-	logger->debug("Get value items {}", items.size());
+//	logger->debug("Get value items {}", items.size());
 	return items;
 }
 
@@ -187,10 +187,10 @@ DropResult TenhouMsgParser::ParseDrop (std::string msg) {
 
 AcceptResult TenhouMsgParser::ParseAccept (std::string msg) {
 	msg = RemoveWrapper(msg);
-	Logger::GetLogger()->debug("Remove wrapper: {}", msg);
+//	Logger::GetLogger()->debug("Remove wrapper: {}", msg);
 	auto tIndex = msg.find("T");
 	string rawMsg = msg.substr(tIndex + 1);
-	Logger::GetLogger()->debug("substr: {}", rawMsg);
+//	Logger::GetLogger()->debug("substr: {}", rawMsg);
 	int rawTile = atoi(rawMsg.c_str());
 
 	return rawTile;
@@ -462,6 +462,22 @@ ReachResult TenhouMsgParser::ParseReach (std::string msg) {
 	return {who, step};
 }
 
+FuritenResult TenhouMsgParser::ParseFuriten (std::string msg) {
+	string reachMsg = RemoveWrapper(msg);
+	vector<string> items;
+	split(items, msg, is_any_of(" "), token_compress_on);
+	int who = -1;
+
+	for (int i = 0; i < items.size(); i ++) {
+		if (items[i].find("show") != string::npos) {
+			trim(items[i]);
+			who = ParseHead("show=\"", items[i]);
+		}
+	}
+
+	return who;
+}
+
 AgariResult TenhouMsgParser::ParseAgari (std::string msg) {
 	static const string whoHeader = "who=\"";
 	static const string machiHeader = "machi=\"";
@@ -647,6 +663,10 @@ bool TenhouMsgParser::IsSilentMsg(string msg) {
 	RxMatch;
 }
 
+bool TenhouMsgParser::IsFuritenMsg(const string& msg) {
+	return (msg.find("FURITEN") != string::npos);
+}
+
 bool TenhouMsgParser::IsDoraMsg(const string msg) {
 	return (msg.find("<DORA") != string::npos);
 }
@@ -675,6 +695,8 @@ GameMsgType TenhouMsgParser::GetMsgType(const string msg) {
 		return GameMsgType::SceneEndMsg;
 	} else if (IsSilentMsg(msg)) {
 		return GameMsgType::SilentMsg;
+	} else if (IsFuritenMsg(msg)) {
+		return GameMsgType::FuritenMsg;
 	}
 
 	else {

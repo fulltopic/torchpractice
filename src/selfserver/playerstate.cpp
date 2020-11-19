@@ -265,7 +265,7 @@ bool checkLastRemain(const vector<int>& remains, bool hasPair) {
 //0, 0, 0, 3, 1, 2, 0, 1, 0, 0, 0, 3, 0, 0, 1, 0, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
 bool checkRegular(vector<int>& tiles, vector<int>& remains, int startIndex, bool hasPair) {
 //	printVec("checkRegular", tiles);
-	for (; (tiles[startIndex] <= 0) && (startIndex < tiles.size()); startIndex++ );
+	for (; (startIndex < tiles.size()) && (tiles[startIndex] <= 0); startIndex++ );
 
 	if (startIndex >= tiles.size()) {
 //		return true;
@@ -483,11 +483,13 @@ void PlayerState::meldRaws(int raw, std::vector<int>& myRaws){
 	} else if (myRaws.size() == 4){ //kan, raw from self
 		int tile = raw / 4;
 		if (closeTiles[tile] > 3) { //closed quad
+			logger->debug("close kan");
 			closeTiles[tile] = 0;
 			vector<int> melds(myRaws.begin(), myRaws.end());
 			std::sort(melds.begin(), melds.end());
 			meldTiles.push_back(melds);
 		} else { //Added open kan
+			logger->debug("add open kan");
 			for (int i = 0; i < meldTiles.size(); i ++) {
 				if ((meldTiles[i][0] / 4) == tile) {
 					meldTiles[i].push_back(raw);
@@ -496,12 +498,27 @@ void PlayerState::meldRaws(int raw, std::vector<int>& myRaws){
 			}
 		}
 	} else { //open kan
+		logger->debug("open kan");
 		int tile = raw / 4;
 		for (int i = 0; i < meldTiles.size(); i ++) {
 			if ((meldTiles[i][0] / 4) == tile) {
 				meldTiles[i].push_back(raw);
-				break;
+				logger->debug("Was pong ");
+				return; //Was a pong
 			}
+		}
+
+		if (closeTiles[tile] > 0) {
+			logger->debug("Meld kan from other player");
+			closeTiles[tile] = 0;
+			vector<int> melds(4, tile);
+			for (int i = 0; i < melds.size(); i ++){
+				melds[i] += i;
+			}
+			meldTiles.push_back(melds);
+			closed = false;
+		} else {
+			logger->error("Unexpected case {}, {}, {}", closeTiles[tile], totalTiles[tile], raw);
 		}
 	}
 }

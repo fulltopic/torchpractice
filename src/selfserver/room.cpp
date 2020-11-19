@@ -32,6 +32,7 @@ using PU = TilePatternUtils;
 using std::vector;
 using P = TenhouMsgParser;
 
+//TODO: Which part of memory does the anonymous variables reside?
 namespace {
 	std::map<int, S> dropMsgHead {
 		{0, "D"},
@@ -45,6 +46,16 @@ namespace {
 		{1, "U"},
 		{2, "V"},
 		{3, "W"},
+	};
+
+	enum RoomState {
+		AuthState = 0,
+		InitState = 1,
+		DropState = 2,
+		IndState = 3,
+		ReachState = 4,
+		SceneEndState = 5,
+		InvalidState = 8,
 	};
 
 	auto logger = Logger::GetLogger();
@@ -84,14 +95,16 @@ void WaitingObj::req(int index, int fromWho, int indType, int raw) {
 	reqs[index].rsped = false;
 }
 
-void WaitingObj::receive(int index) {
+bool WaitingObj::receive(int index) {
 	std::unique_lock<std::mutex> lock(m);
 	reqs[index].received = true;
 	reqs[index].rspSeq = rspSeq;
 	rspSeq ++;
+
+	return allRspRcvedNoLock();
 }
 
-void WaitingObj::accept(int index, int rspType, std::vector<int>&& raws) {
+void WaitingObj::accept(int index, int rspType, std::vector<int> raws) {
 	std::unique_lock<std::mutex> lock(m);
 	reqs[index].accepted = true;
 	reqs[index].indType = rspType;
@@ -100,7 +113,7 @@ void WaitingObj::accept(int index, int rspType, std::vector<int>&& raws) {
 		int tile = reqs[index].raw / 4;
 		if (reqs[index].fromWho == index) { //kan from self
 			for (int i = 0; i < 4; i ++) {
-				raws.push_back(tile * 4 + 1);
+				raws.push_back(tile * 4 + i);
 			}
 		} else {
 			for (int i = 0; i < 4; i ++) {
@@ -112,9 +125,11 @@ void WaitingObj::accept(int index, int rspType, std::vector<int>&& raws) {
 		}
 	}
 
-	reqs[index].raws = std::move(raws);
+//	reqs[index].raws = std::move(raws);
+	reqs[index].raws = raws;
 }
 
+//TODO: No one calls
 void WaitingObj::process(int index) {
 	std::unique_lock<std::mutex> lock(m);
 	reqs[index].rsped = true;
@@ -193,6 +208,7 @@ int WaitingObj::getRspIndex() {
 	return index;
 }
 
+//TODO: name is misleading
 int WaitingObj::getNextDistIndex() {
 	for (int i = 0; i < PU::PlayerNum; i ++) {
 		if (reqed(i)) {
@@ -213,8 +229,7 @@ std::vector<int> WaitingObj::getActInfo(int index) {
 	return {reqs[index].fromWho, reqs[index].indType, reqs[index].raw};
 }
 
-bool WaitingObj::allRspRcved() {
-	std::unique_lock<std::mutex> lock(m);
+bool WaitingObj::allRspRcvedNoLock() {
 	for (int i = 0; i < PU::PlayerNum; i ++) {
 		if ((reqs[i].indType >= 0) && (!reqs[i].received)) {
 			return false;
@@ -222,6 +237,12 @@ bool WaitingObj::allRspRcved() {
 	}
 
 	return true;
+}
+
+bool WaitingObj::allRspRcved() {
+	std::unique_lock<std::mutex> lock(m);
+
+	return allRspRcvedNoLock();
 }
 
 void WaitingObj::printReqInfo(int index) {
@@ -240,6 +261,7 @@ void WaitingObj::printReqsInfo() {
 Room::Room(uint32_t iSeq)
 	: seq(iSeq),
 	  working(true),
+	  roomState(AuthState),
 	  oyaIndex(-1),
 	  tileIndex(0), //What's this for?
 	  allReady(0),
@@ -416,10 +438,13 @@ enum {
 	TsumoLoss = 10,
 	ReachPrice = 10,
 };
+
+
 }
 
 void Room::processRyu() {
 	logger->info("Room{} processRyu", seq);
+	roomState = InitState;
 	// <RYUUKYOKU ba="0,0" sc="207,-15,240,15,416,15,137,-15" hai1="19,20,26,41,43,45,49,54,61,62" hai2="44,46,56,63" />
 	for (int i = 0; i < PU::PlayerNum; i ++) {
 		std::stringbuf buf;
@@ -431,7 +456,7 @@ void Room::processRyu() {
 				output << ",";
 			}
 		}
-		output << "\"";
+		output << "\" ";
 		output << "hai1=\"\" hai2=\"\" hai3=\"\" hai4=\"\" />";
 		clients[i]->send(buf.str());
 	}
@@ -471,6 +496,7 @@ void Room::processAgari(int who, int fromWho) {
 
 	for (int i = 0; i < PU::PlayerNum; i ++) {
 		if (tens[i] + deltas[i] <= 0) {
+			roomState = SceneEndState;
 			for (int j = 0; j < PU::PlayerNum; j ++) {
 				clients[j]->send("<PROF lobby=\"3\" type=\"3\" add=\"0\"/>");
 			}
@@ -478,6 +504,9 @@ void Room::processAgari(int who, int fromWho) {
 		}
 	}
 
+	if (roomState != SceneEndState) {
+		roomState = InitState;
+	}
 
 	for (int i = 0; i < PU::PlayerNum; i ++) {
 		std::stringbuf buf;
@@ -495,7 +524,9 @@ void Room::processAgari(int who, int fromWho) {
 
 		output << "machi=\"\" ten=\"\" yaku=\"\" ";
 
-		output << "who=\"" << (who - i + PU::PlayerNum) % PU::PlayerNum << "\" fromWho=\"" << (fromWho - i + PU::PlayerNum) % PU::PlayerNum << "\" ";
+		output << "who=\"" << (who - i + PU::PlayerNum) % PU::PlayerNum
+				<< "\" fromWho=\"" << (fromWho - i + PU::PlayerNum) % PU::PlayerNum << "\" "
+				<< "sc=\"";
 
 		for (int j = 0; j < PU::PlayerNum; j ++) {
 			if (j != 0) {
@@ -531,18 +562,19 @@ void Room::distRaw(int clientIndex) {
 
 	states[clientIndex].acceptTile(raw);
 
-	//TODOED: If tsumo, send <T79 t="16">
+	//TODO: Check ankan
 	if (ron) {
 		logger->info("Room{} detected ron {}", seq, clientIndex);
-		wo.req(clientIndex, clientIndex, 16, raw);
+		wo.req(clientIndex, clientIndex, 16, raw); //tsumo
+		roomState = IndState;
 		clients[clientIndex]->send("<T" + std::to_string(raw) + " t=\"16\"/>");
 	} else if (states[clientIndex].checkReach()) {
 		logger->info("Room{} detected reach {}", seq, clientIndex);
+		roomState = ReachState;
+		wo.req(clientIndex, clientIndex, 32, raw); //reach
 		clients[clientIndex]->send("<T" + std::to_string(raw) + " t=\"32\"/>");
-		wo.req(clientIndex, clientIndex, 32, raw);
-		//uniform with other indicators
-//		waitingReqs.push_back({clientIndex, clientIndex, raw, 32, false, false}); //reach
 	} else {
+		roomState = DropState;
 		clients[clientIndex]->send("<T" + std::to_string(raw) + "/>");
 	}
 	clients[(clientIndex + 1) % PU::PlayerNum]->send("<U/>");
@@ -555,6 +587,11 @@ void Room::distRaw(int clientIndex) {
 
 void Room::processDropMsg(int clientIndex, S& msg) {
 	logger->debug("Room{}:{} processDropMsg {}", seq, clientIndex, msg);
+	if (msg.find("<D") == S::npos) {
+		logger->error("Room{}:{} DropState unexp: {}", seq, clientIndex, msg);
+//		roomState = DropState;
+		return;
+	}
 
 	vector<S> items = P::ParseItems(msg);
 	int raw = P::ParseHead("p=\"", items[1]);
@@ -562,64 +599,37 @@ void Room::processDropMsg(int clientIndex, S& msg) {
 	states[clientIndex].dropTile(raw);
 
 
-	//Check reach step2
-	if (states[clientIndex].reached && wo.getActInfo(clientIndex)[2] == raw) {
-		logger->info("Room{}:{}: Received reach response: {}", seq, clientIndex, raw);
-		wo.reset();
-		//tens adjusted at the end of game
-		for (int i = 0; i < PU::PlayerNum; i ++) {
-			int nextClientIndex = (clientIndex - i + PU::PlayerNum) % PU::PlayerNum;
-			std::stringbuf buf;
-			std::ostream output(&buf);
-
-			output << "<REACH who=\"" << nextClientIndex << "\" ten=\"";
-			for (int j = 0; j < PU::PlayerNum; j ++) {
-				if (j != 0) {
-					output << ",";
-				}
-				output << tens[(i + j) % PU::PlayerNum];
-			}
-			output << "\" step=\"2\"/>";
-
-			clients[i]->send(buf.str());
-		}
-//		wo.process(clientIndex);
-	} else if ((!states[clientIndex].reached) && wo.isReach(clientIndex)) {
-		logger->info("Room{}:{}: Decide not to reach", seq, clientIndex);
-		wo.reset();
-	} else if (states[clientIndex].reached){
-		logger->error("Room{}:{} received un-matched reach statement {} != {}", seq, clientIndex, raw, reachRaws[clientIndex]);
-	}
-
-
-//	vector<bool> actChecked(PU::PlayerNum, false);
-//	actChecked[clientIndex] = true;
-//	std::vector<int> meldTypes(PU::PlayerNum, -1);
-
 	for (int i = 1; i < PU::PlayerNum; i ++) {
 		int nextIndex = (i + clientIndex) % PU::PlayerNum;
 		if (states[nextIndex].checkAgari(raw)) {
 			logger->warn("Room{}:{} detected agari {} by {}", seq, clientIndex, nextIndex, raw);
 			wo.req(nextIndex, clientIndex, 9, raw);
-//			waitingReqs.push_back({nextIndex, clientIndex, raw, 9, false, false, {}}); //9 = ronind
-//			meldTypes[nextIndex] = 9;
-//			actChecked[nextIndex] = true;
 		}
 	}
 
 	for (int i = 1; i < PU::PlayerNum; i ++) {
 		int nextIndex = (clientIndex + i) % PU::PlayerNum;
-//		if (!actChecked[nextIndex]) {
 		if (!wo.reqed(nextIndex)) {
 			int meldType = states[nextIndex].checkMeldType(clientIndex, tile);
 			logger->debug("Room{}:{} detected meld {} by {}: {}", seq, clientIndex, nextIndex, raw, meldType);
 			if (meldType >= 0) {
-//				waitingReqs.push_back({nextIndex, clientIndex, raw, meldType, false, false, {}});
 				wo.req(nextIndex, clientIndex, meldType, raw);
 			}
-//			meldTypes[nextIndex] = meldType;
-//			actChecked[nextIndex] = true;
 		}
+	}
+
+	logger->debug("Room{}:{} collected waiting reqs:", seq, clientIndex);
+	for (int i = 0; i < PU::PlayerNum; i ++) {
+		std::vector<int> actInfo = wo.getActInfo(i);
+		logger->debug("who={}, fromWho={}, raw={}, type={}", i, actInfo[0], actInfo[2], actInfo[1]);
+	}
+
+
+	bool woReqed = wo.reqed();
+	if (woReqed) {
+		roomState = IndState;
+	} else {
+		roomState = DropState;
 	}
 
 	for (int i = 0; i < PU::PlayerNum; i ++) {
@@ -632,51 +642,29 @@ void Room::processDropMsg(int clientIndex, S& msg) {
 		}
 	}
 
-	logger->debug("Room{}:{} collected waiting reqs:", seq, clientIndex);
-	for (int i = 0; i < PU::PlayerNum; i ++) {
-		std::vector<int> actInfo = wo.getActInfo(i);
-		logger->debug("who={}, fromWho={}, raw={}, type={}", i, actInfo[0], actInfo[2], actInfo[1]);
-	}
-
-//	bool plainDrop = true;
-//	for (auto type: meldTypes) {
-//		if (type >= 0) {
-//			plainDrop = false;
-//		}
-//	}
-	if (!wo.reqed()) {
+	if (!woReqed) {
 		logger->debug("Room{}:{} {} No special indicator, next round", seq, clientIndex, raw);
 		distRaw((clientIndex + 1) % PU::PlayerNum);
+		return;
 	}
+
 }
 
-void Room::processIndMsg(int clientIndex, S& msg) {
+void Room::processIndMsg(int clientIndex, S msg) {
 	logger->debug("Room{}:{} processIndMsg: {}", seq, clientIndex, msg);
-
-//	int waitIndex = -1;
-//	{
-//		std::unique_lock<std::mutex> lock(bar); //For contents sync
-//	for (int i = 0; i < waitingReqs.size(); i ++) {
-//		if (waitingReqs[i].clientIndex == clientIndex) {
-//			waitIndex = i;
-//			break;
-//		}
-//	}
-//	}
+	if (msg.find("<N") == S::npos) {
+		logger->error("Room{}:{} IndState unexp: {}", seq, clientIndex, msg);
+//		roomState = IndState;
+		return;
+	}
 
 	if (!wo.reqed(clientIndex)) {
 		logger->error("Room{}:{} No corresponding waiting req for this ind {}", seq, clientIndex, msg);
-//		for (int i = 0; i < PU::PlayerNum; i ++) {
-//			auto actInfo = wo.getActInfo(clientIndex);
-//			std::cout << i << ", " << actInfo[0] << ", "
-//						<< actInfo[1]
-//						<< std::endl;
-//		}
 		return;
 	}
 
 	vector<S> items = P::ParseItems(msg);
-	wo.receive(clientIndex);
+//	bool allRspRcved = wo.receive(clientIndex);
 	//Ignore indicator
 	if (items.size() <= 1) {
 //		logger->debug("items size <= 1, {}", items.size());
@@ -692,7 +680,6 @@ void Room::processIndMsg(int clientIndex, S& msg) {
 				indType = type;
 			} else if (items[i].find("hai0") != S::npos) {
 				int hai = P::ParseHead("hai0=\"", items[i]);
-//				logger->debug("Parse hai0 {}", hai);
 				raws.push_back(hai);
 			} else if (items[i].find("hai1") != S::npos) {
 				int hai = P::ParseHead("hai1=\"", items[i]);
@@ -706,22 +693,25 @@ void Room::processIndMsg(int clientIndex, S& msg) {
 			}
 		}
 		std::sort(raws.begin(), raws.end());
-		wo.accept(clientIndex, indType, std::move(raws));
-		auto actInfo = wo.getActInfo(clientIndex);
-		logger->info("Room{}:{} received req {} rsp {}", seq, clientIndex, actInfo[0], actInfo[2]);
-//		std::cout << raws << std::endl;
 		for (auto raw: raws) {
 			std::cout << raw << ", ";
 		}
-		std::cout << std::endl;
+//		wo.accept(clientIndex, indType, std::move(raws));
+		wo.accept(clientIndex, indType, raws);
+		auto actInfo = wo.getActInfo(clientIndex);
+		logger->info("Room{}:{} received req {} rsp {}", seq, clientIndex, actInfo[0], actInfo[2]);
 	}
 
-	if (!wo.allRspRcved()) {
+	//put wo.receive in previous position may cause race between receive and race
+	//e.g. client1 received, client2 received, client2 gave up, client2 receiveAll
+	// client2 getRspIndex returns -1, client1 accepted, but not detected.
+	if (!wo.receive(clientIndex)) {
 		wo.printReqsInfo();
 		return;
 	}
+	//TODOED: Race here. Two clients may find all received after each rsp processed
 
-	//TODO: No reach penalty for training network
+	//TODOED: No reach penalty for training network
 	bool agariDetected = false;
 	for (int i = 0; i < PU::PlayerNum; i ++) {
 		if (wo.isAgari(i)) {
@@ -736,23 +726,27 @@ void Room::processIndMsg(int clientIndex, S& msg) {
 		return;
 	}
 
-	//Process race with same priority
+	//Process race with some priority
 	//3-->chow, 1 --> pong
 	int rspWaitIndex = wo.getRspIndex();
 
 	if (rspWaitIndex < 0) {
 		logger->debug("Room{}:{} no one wants to meld, to dist", seq, clientIndex);
+		int nextClientIndex = wo.getNextDistIndex();
 		wo.reset();
-		distRaw(wo.getNextDistIndex());
+		distRaw(nextClientIndex);
 	} else {
+		//TODO: getActInfo could return &
+		//TODO: room is friend class of wo
 		std::vector<int> actInfo = wo.getActInfo(rspWaitIndex);
-
 		logger->info("Room{}:{}  {} meld {} from {}", seq, clientIndex, rspWaitIndex, actInfo[1], actInfo[0]);
+
 		auto meldRaws = wo.getMeldRaws(rspWaitIndex);
 		states[rspWaitIndex].meldRaws(actInfo[2], meldRaws);
 		int m = PlayerState::GetM(actInfo[1], actInfo[2], meldRaws);
 
 		wo.reset();
+		roomState = DropState;
 
 		for (int j = 0; j < PU::PlayerNum; j ++) {
 			int relaIndex = (rspWaitIndex - j + PU::PlayerNum) % PU::PlayerNum;
@@ -766,27 +760,67 @@ void Room::processIndMsg(int clientIndex, S& msg) {
 }
 
 void Room::processReachMsg(int clientIndex, S& msg) {
-	vector<S> items = P::ParseItems(msg);
-	int raw = -1;
-	for (int i = 0; i < items.size(); i ++) {
-		if (items[i].find("hai") != S::npos) {
-			raw = P::ParseHead("hai=\"", items[i]);
-			break;
+	//Check reach step2
+	if (msg.find("<D") != S::npos) {
+		vector<S> items = P::ParseItems(msg);
+		int raw = P::ParseHead("p=\"", items[1]);
+		int tile = raw / 4;
+
+		if (states[clientIndex].reached && wo.getActInfo(clientIndex)[2] == raw) {
+			logger->info("Room{}:{}: Received reach response: {}", seq, clientIndex, raw);
+			wo.reset();
+			//tens adjusted at the end of game
+			for (int i = 0; i < PU::PlayerNum; i ++) {
+				int nextClientIndex = (clientIndex - i + PU::PlayerNum) % PU::PlayerNum;
+				std::stringbuf buf;
+				std::ostream output(&buf);
+
+				output << "<REACH who=\"" << nextClientIndex << "\" ten=\"";
+				for (int j = 0; j < PU::PlayerNum; j ++) {
+					if (j != 0) {
+						output << ",";
+					}
+					output << tens[(i + j) % PU::PlayerNum];
+				}
+				output << "\" step=\"2\"/>";
+
+				clients[i]->send(buf.str());
+			}
+
+			roomState = DropState; //May not be true
+			processDropMsg(clientIndex, msg);
+		} else if ((!states[clientIndex].reached) && wo.isReach(clientIndex)) {
+			logger->info("Room{}:{}: Decide not to reach", seq, clientIndex);
+			wo.reset();
+			roomState = DropState;
+			processDropMsg(clientIndex, msg);
+		} else if (states[clientIndex].reached){
+			logger->error("Room{}:{} received un-matched reach statement {} != {}", seq, clientIndex, raw, reachRaws[clientIndex]);
+		} else {
+			logger->error("Room{}:{} ReachState unexp drop: {}", seq, clientIndex, msg);
+		}
+	} else if (msg.find("REACH") != S::npos) {
+		vector<S> items = P::ParseItems(msg);
+		int raw = -1;
+		for (int i = 0; i < items.size(); i ++) {
+			if (items[i].find("hai") != S::npos) {
+				raw = P::ParseHead("hai=\"", items[i]);
+				break;
+			}
+		}
+
+		roomState = ReachState;
+		states[clientIndex].reached = true;
+		wo.req(clientIndex, clientIndex, 32, raw);
+		logger->debug("Room{}:{} declare to reahc by {}", seq, clientIndex, raw);
+
+		for (int i = 0; i < PU::PlayerNum; i ++) {
+			int nextClientIndex = (clientIndex - i + PU::PlayerNum) % PU::PlayerNum;
+			clients[i]->send("<REACH who=\"" + std::to_string(nextClientIndex) + "\" step=\"1\"/>");
 		}
 	}
-
-	//TODO: Process waitingReqs
-	states[clientIndex].reached = true;
-	wo.req(clientIndex, clientIndex, 32, raw);
-	logger->debug("Room{}:{} declare to reahc by {}", seq, clientIndex, raw);
-
-
-
-//	reachRaws[clientIndex] = raw;
-
-	for (int i = 0; i < PU::PlayerNum; i ++) {
-		int nextClientIndex = (clientIndex - i + PU::PlayerNum) % PU::PlayerNum;
-		clients[i]->send("<REACH who=\"" + std::to_string(nextClientIndex) + "\" step=\"1\"/>");
+	else {
+		logger->error("Room{}:{} ReachState uexp: {}", seq, clientIndex, msg);
 	}
 }
 
@@ -800,8 +834,8 @@ void Room::processBye(int clientIndex) {
 	}
 }
 
-bool Room::processInitMsg(int clientIndex, S& msg) {
-	logger->debug("Room{}:{} processInitMsg: {}", seq, clientIndex, msg);
+bool Room::processAuthMsg(int clientIndex, S msg) {
+	logger->debug("Room{}:{} processAuthMsg: {}", seq, clientIndex, msg);
 
 	//Hard code all responses
 	if (msg.find("HELO") != S::npos) {
@@ -832,31 +866,25 @@ bool Room::processInitMsg(int clientIndex, S& msg) {
 		} else {
 			allGo |= (1 << clientIndex);
 			logger->info("Room{}:{} allGo = {}", seq, clientIndex, allGo);
+
+			if (allGo == AllReady) {
+				roomState = InitState;
+			}
 		}
 		return true;
-	} else {
+	} else if (msg.find("NEXT") != S::npos) {
+		logger->debug("Room{}:{} NEXTREADY", seq, clientIndex);
+		std::unique_lock<std::mutex> lock(bar);
+		allReady |= (1 << clientIndex);
+		return true;
+	}
+	else {
 		logger->debug("Room{}:{}: InitMsg unexpected: {}", seq, clientIndex, msg);
 		return false;
 	}
 }
 
-void Room::processMsg(int clientIndex, S msg) {
-	if (msg.find("<Z") != S::npos) {
-		logger->info("Room{}:{} KA", seq, clientIndex);
-		return;
-	}
-
-//	if (allGo != AllReady) {
-//		processInitMsg(clientIndex, msg);
-//		return;
-//	}
-	if (processInitMsg(clientIndex, msg)) {
-		return;
-	}
-
-	logger->info("Room{}:{} received msg {}", seq, clientIndex, msg);
-
-	//TODO: Make sure that all clients are ready for game
+void Room::processInitMsg(int clientIndex, S msg) {
 	if (msg.find("NEXTREADY") != S::npos) {
 		logger->debug("Room{}:{} NEXTREADY", seq, clientIndex);
 
@@ -881,17 +909,67 @@ void Room::processMsg(int clientIndex, S msg) {
 			for (int i = 0; i < PU::PlayerNum; i ++) {
 				sendInitMsg(i);
 			}
+			//TODOED: Set nextState in distRaw;
 			distRaw(oyaIndex);
 		}
-	} else if (msg.find("<D") != S::npos) {
-		processDropMsg(clientIndex, msg);
-	} else if (msg.find("<N") != S::npos && msg.find("NEXT") == S::npos) {
-		processIndMsg(clientIndex, msg);
-	} else if (msg.find("REACH") != S::npos) {
-		processReachMsg(clientIndex, msg);
-	} else if (msg.find("BYE") != S::npos) {
-		processBye(clientIndex);
 	} else {
-		//ERROR
+		logger->error("Room{}:{} InitState unexp msg: {}", seq, clientIndex, msg);
 	}
+}
+
+void Room::processSceneEndMsg(int clientIndex, S msg) {
+	if (msg.find("BYE") == S::npos) {
+		logger->error("Room{}:{} InitState unexp msg: {}", seq, clientIndex, msg);
+		return;
+	}
+
+	processBye(clientIndex);
+}
+
+void Room::processMsg(int clientIndex, S msg) {
+	if (msg.find("<Z") != S::npos) {
+//		logger->info("Room{}:{} KA", seq, clientIndex);
+		return;
+	}
+
+	logger->info("Room{}:{} received msg {}", seq, clientIndex, msg);
+
+	switch(roomState) {
+	case AuthState:
+		processAuthMsg(clientIndex, msg);
+		break;
+	case InitState:
+		processInitMsg(clientIndex, msg);
+		break;
+	case DropState:
+		processDropMsg(clientIndex, msg);
+		break;
+	case IndState:
+		processIndMsg(clientIndex, msg);
+		break;
+	case ReachState:
+		processReachMsg(clientIndex, msg);
+		break;
+	case SceneEndState:
+		processSceneEndMsg(clientIndex, msg);
+		break;
+	default:
+		processNetErr(clientIndex);
+		break;
+	}
+}
+
+void Room::processNetErr(int clientIndex) {
+	std::unique_lock<std::mutex> lock(closeMutex);
+	if (working) {
+		for(int i = 0; i < PU::PlayerNum; i ++) {
+			clients[i]->close();
+		}
+	}
+	roomState = InvalidState;
+	working = false;
+}
+
+Room::~Room() {
+	logger->error("Room {} destructed", seq);
 }

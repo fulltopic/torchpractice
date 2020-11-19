@@ -42,6 +42,7 @@ BaseState::BaseState(int ww, int hh):
 		w(ww), h(hh),
 		isReach(false),
 		isOwner(false),
+		isFuriten(false),
 		logger(Logger::GetLogger()){
 	myTiles = vector<bool> (TenhouConsts::TileNum * TenhouConsts::NumPerTile, false);
 	innerState = torch::zeros({h, w});
@@ -114,6 +115,21 @@ void BaseState::setReach(int playerIndex) {
 	}
 }
 
+void BaseState::setFuriten(int playerIndex, bool furiten) {
+	int index = stateIndex(playerIndex);
+
+	if (playerIndex == ME) {
+		isFuriten = furiten;
+		index = 0;
+	}
+
+	if (isFuriten) {
+		innerState[index][FuritenPos] = 1;
+	} else {
+		innerState[index][FuritenPos] = 0;
+	}
+}
+
 void BaseState::setDora(int dora) {
 	doras.insert(dora);
 }
@@ -128,6 +144,7 @@ void BaseState::reset() {
 
 	isReach = false;
 	isOwner = false;
+	isFuriten = false;
 }
 
 //vector<int> LstmState::getStealTiles(int type, int raw) {
@@ -272,7 +289,7 @@ vector<int> BaseState::getDropCandidates() {
 //TODO int --> StealType
 vector<int> BaseState::getCandidates(int type, int raw) {
 	auto stateData = innerState.accessor<float, 2>();
-	logger->debug("Get candidates for {}, {}", type, raw);
+//	logger->debug("Get candidates for {}, {}", type, raw);
 
 	if (type == StealType::DropType) {
 		if (isReach) {

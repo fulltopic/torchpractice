@@ -21,8 +21,10 @@
 
 using namespace std;
 
+//const std::string TenhouTcpConn::ServerIp = "133.242.10.78";
+//static const int ServerPort = 10080;
 const std::string TenhouTcpConn::ServerIp = "127.0.0.1";
-static const int ServerPort = 26238;
+static const int ServerPort = 55555;
 
 TenhouTcpConn::TenhouTcpConn():
 				sock(0) {

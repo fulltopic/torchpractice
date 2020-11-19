@@ -30,7 +30,7 @@ class ClientConn: public std::enable_shared_from_this<ClientConn> {
 private:
 	enum {RcvBufSize = 512, WrtBufCap = 8};
 
-	std::shared_ptr<Room> room;
+	std::weak_ptr<Room> room;
 	boost::asio::ip::tcp::socket skt;
 	boost::array<char, 512> rcvBuf;
 
@@ -38,8 +38,9 @@ private:
 	boost::array<char[512], 8> wrtBufs;
 
 	int index;
+	int roomIndex;
 
-	ClientConn(int playerIndex, boost::asio::io_context& ioService, std::shared_ptr<Room> iRoom);
+	ClientConn(int playerIndex, boost::asio::io_context& ioService, std::shared_ptr<Room>& iRoom);
 
 	void handleRcv(const boost::system::error_code& e, std::size_t len);
 	void handleSend(const boost::system::error_code& e, std::size_t len, int bufIndex, std::size_t expLen);
@@ -51,12 +52,13 @@ private:
 public:
 	~ClientConn();
 
-	static std::shared_ptr<ClientConn> Create(int playerIndex, boost::asio::io_context& ioService, std::shared_ptr<Room> iRoom);
+	static std::shared_ptr<ClientConn> Create(int playerIndex, boost::asio::io_context& ioService, std::shared_ptr<Room>& iRoom);
 
 	void start();
 
-	void send(std::string& msg);
-	void send(std::string&& msg);
+//	void send(std::string& msg);
+//	void send(std::string&& msg);
+	void send(std::string msg);
 	void rcv();
 
 	inline boost::asio::ip::tcp::socket& getSocket() {

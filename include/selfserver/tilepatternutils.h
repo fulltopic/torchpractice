@@ -17,7 +17,7 @@ public:
 		TilePerMajor = 4,
 		PlayerNum = 4,
 		TotalTileNum = 134,
-		InitTen = 10,
+		InitTen = 80,
 		NormTile = 13,
 		DrawRemain = 14, //Ryu
 		Mangan = 2000,

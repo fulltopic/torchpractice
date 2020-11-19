@@ -247,6 +247,12 @@ void testParse() {
 		}
 	}
 }
+
+void testPointer() {
+	int a = 1;
+	int *b = &a;
+	std::cout << "Size of pointer " << sizeof(b) << std::endl;
+}
 }
 
 int main(int argc, char** argv) {
@@ -254,8 +260,10 @@ int main(int argc, char** argv) {
 
 //	testAgariChecker();
 //	stateAgari();
-	testReach();
+//	testReach();
 //	testM();
 //	testParse();
+
+	testPointer();
 }
 

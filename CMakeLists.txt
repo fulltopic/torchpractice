@@ -264,3 +264,11 @@ target_link_libraries(testserverutils ${shared_libs} ${static_libs})
 add_executable(testselfserver src/selfserver/testserver.cpp $<TARGET_OBJECTS:rltest> $<TARGET_OBJECTS:selfserver> $<TARGET_OBJECTS:tenhouclient> $<TARGET_OBJECTS:nets> $<TARGET_OBJECTS:utils>)
 target_compile_features(testselfserver PUBLIC cxx_range_for)
 target_link_libraries(testselfserver ${shared_libs} ${static_libs})
+
+add_executable(testreaderserver src/selfserver/readtestserver.cpp $<TARGET_OBJECTS:rltest> $<TARGET_OBJECTS:selfserver> $<TARGET_OBJECTS:tenhouclient> $<TARGET_OBJECTS:nets> $<TARGET_OBJECTS:utils>)
+target_compile_features(testreaderserver PUBLIC cxx_range_for)
+target_link_libraries(testreaderserver ${shared_libs} ${static_libs})
+
+add_executable(testreaderclient src/selfserver/readtestclient.cpp $<TARGET_OBJECTS:rltest> $<TARGET_OBJECTS:selfserver> $<TARGET_OBJECTS:tenhouclient> $<TARGET_OBJECTS:nets> $<TARGET_OBJECTS:utils>)
+target_compile_features(testreaderclient PUBLIC cxx_range_for)
+target_link_libraries(testreaderclient ${shared_libs} ${static_libs})

@@ -18,7 +18,7 @@
 
 namespace {
 void startServer() {
-	spdlog::set_level(spdlog::level::info);
+	spdlog::set_level(spdlog::level::debug);
 //	Logger::GetLogger()->set_pattern("[%t][%l]: %v");
 
 	boost::asio::io_context io;
@@ -27,7 +27,7 @@ void startServer() {
 	server->start();
 
 	std::vector<std::unique_ptr<std::thread>> ioThreads;
-	for (int i = 0; i < 4; i ++) {
+	for (int i = 0; i < 3; i ++) {
 		ioThreads.push_back(std::make_unique<std::thread>(
 				static_cast<std::size_t (boost::asio::io_context::*)()>(&boost::asio::io_context::run), &io));
 	}

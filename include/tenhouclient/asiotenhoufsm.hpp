@@ -581,6 +581,7 @@ void asiotenhoufsm<NetType>::readyState(const ErrorCode &e, std::size_t len) {
 			RegRcv(readyState);
 		}else {
 			logUnexpMsg("readyState", msg);
+			RegRcv(readyState);
 		}
 	} else {
 		logNetworkErr("readyState", e.message());
@@ -650,9 +651,9 @@ void asiotenhoufsm<NetType>::gameEnd2NextTimerHandle(const boost::system::error_
 		sock.cancel();
 
 		if (send(G::GenNextReadyMsg())) {
-			if (send(G::GenNoopMsg())) {
+//			if (send(G::GenNoopMsg())) {
 				RegRcv(readyState);
-			}
+//			}
 		}
 	} else {
 		logger->error("gameEnd2NextTimer interrupted as: {}", e.message());
@@ -716,7 +717,7 @@ void asiotenhoufsm<NetType>::sceneEndState(const ErrorCode &e, std::size_t len) 
 		sceneEnd2StartTimer.cancel();
 
 		S msg (rcvBuf.data(), len);
-		logger->info("sceneEnd received msg: {}", msg);
+		logger->debug("sceneEnd received msg: {}", msg);
 
 		auto msgs = splitRcvMsg(msg);
 		bool isGameEndMsg = false;
@@ -756,14 +757,12 @@ void asiotenhoufsm<NetType>::sceneEnd2StartTimerHandle(const ErrorCode &e) {
 		logger->warn("sceneEnd2StartTimer expiring");
 
 		net->setGameEnd(); //setGameEnd so that need not to wait for next INIT message
-		sock.cancel();
-//		//Maybe an extra message
-//		if (send(G::GenByeMsg())) {
-//			sleep(5);
-//			if (send(G::GenHeloMsg(name))) {
-//				RegRcv(heloState);
-//			}
-//		}
+		try {
+			sock.cancel();
+			send(G::GenByeMsg());
+		} catch(std::exception& e) {
+			logger->error("Failed to cancel sock: {}", e.what());
+		}
 		toReset();
 	} else {
 		logger->error("sceneEnd2StartTimer interrupted as: {}", e.message());

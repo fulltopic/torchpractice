@@ -54,8 +54,8 @@ public:
 	~WaitingObj() = default;
 
 	void req(int index, int fromWho, int indType, int raw);
-	void receive(int index);
-	void accept(int index, int rspType, std::vector<int>&& raws);
+	bool receive(int index);
+	void accept(int index, int rspType, std::vector<int> raws);
 	void process (int index);
 
 	void reset();
@@ -72,6 +72,7 @@ public:
 //	int getFromWho(int index);
 	bool isAgari(int index);
 	bool isReach(int index);
+	bool allRspRcvedNoLock();
 	bool allRspRcved();
 	int getRspIndex();
 	int getNextDistIndex();
@@ -105,11 +106,13 @@ private:
 	std::map<int, int> reachRaws;
 
 	std::mutex bar;
+	std::mutex closeMutex;
 	volatile int allReady;
 	volatile int allBye;
 	volatile int allGo;
 
 	volatile bool working;
+	volatile int roomState;
 
 	int oyaIndex;
 	int tileIndex;
@@ -132,10 +135,12 @@ private:
 
 	bool processOrphanCase();
 	bool processAbortCase();
-	bool processInitMsg(int clientIndex, std::string& msg);
+	bool processAuthMsg(int clientIndex, std::string msg);
+	void processInitMsg(int clientIndex, std::string msg);
 	void processDropMsg(int cientIndex, std::string& msg);
-	void processIndMsg(int clientIndex, std::string& msg);
+	void processIndMsg(int clientIndex, std::string msg);
 	void processReachMsg(int clientIndex, std::string& msg);
+	void processSceneEndMsg(int clientIndex, std::string msg);
 
 	void processRyu();
 	void processAgari(int who, int fromWho);
@@ -149,13 +154,14 @@ public:
 	enum {
 		AllReady = 0x0f,
 	};
-	~Room() = default;
+	~Room();
 
 	static std::shared_ptr<Room> Create(uint32_t iSeq);
 
 	void addClient(int index, std::shared_ptr<ClientConn> client);
 
 	void processMsg(int clientIndex, std::string msg); //Should be thread_safe
+	void processNetErr(int clientIndex);
 
 	inline bool isWorking() { return working; }
 	inline int getClientNum() { return clients.size(); }

@@ -10,8 +10,8 @@
 
 namespace rltest {
 
-const int RlSetting::ProxyNum = 4;
-const int RlSetting::ThreadNum = 4;
+const int RlSetting::ProxyNum = 1;
+const int RlSetting::ThreadNum = 1;
 const int RlSetting::BatchSize = 8;
 const int RlSetting::UpdateThreshold = 64; //TODO: update network in time
 
