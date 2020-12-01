@@ -16,7 +16,7 @@ public:
 	enum {
 		TilePerMajor = 4,
 		PlayerNum = 4,
-		TotalTileNum = 134,
+		TotalTileNum = 136,
 		InitTen = 80,
 		NormTile = 13,
 		DrawRemain = 14, //Ryu

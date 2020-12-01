@@ -12,6 +12,7 @@
 #include "utils/logger.h"
 
 #include <vector>
+#include <set>
 #include <string>
 #include <algorithm>
 #include <iostream>
@@ -24,16 +25,34 @@ namespace {
 	auto logger = Logger::GetLogger();
 }
 
-PlayerState::PlayerState(int index, int rIndex)
-	: closeTiles(34, 0),
-	  dropTiles(34, 0),
-	  totalTiles(34, 0),
+
+bool MeldTypeHelper::IsValid(const MeldType& meldType) {
+	return (meldType != MeldType::Invalid);
+}
+
+bool MeldTypeHelper::Prior2(const MeldType type0, const MeldType type1) {
+	return (static_cast<int>(type0) > static_cast<int>(type1)); //chow prior to pong
+	//TODO: Invalid input
+}
+
+bool MeldTypeHelper::IsRonInd(const MeldType& type) {
+	const static std::set<MeldType> ronInds {
+		MeldType::RonRspInd6, MeldType::RonRspInd7, MeldType::RonRspInd9};
+
+	return (ronInds.find(type) != ronInds.end());
+}
+
+bool MeldTypeHelper::IsKanRsp(const MeldType& type) {
+	return ((type != MeldType::PongRspType) && (type != MeldType::ChowRspType));
+}
+
+bool MeldTypeHelper::IsReachInd(const MeldType& type) {
+	return (type == MeldType::Reach);
+}
+
+PlayerState::PlayerState(int index, int rIndex):
 	  myIndex(index),
-	  roomIndex(rIndex),
-	  closed(true),
-	  reached(false),
-	  agariRaw(-1),
-	  fromWho (-1)
+	  roomIndex(rIndex)
 {
 
 }
@@ -116,30 +135,34 @@ void printVec(std::string comment, const std::vector<int>& data) {
 bool PlayerState::checkAgari(int raw) {
 	logger->debug("Player {}:{} check agari {}", roomIndex, myIndex, raw);
 	int tile = raw / 4;
-	totalTiles[tile] += 1;
+	KanTileObj kanTileObj(totalTiles[tile]);
+
+//	totalTiles[tile] += 1;
 	printVec("totalTiles ", totalTiles);
 
 	auto keyAndPos = AgariChecker::GetInst()->getKey(totalTiles);
 	int key = std::get<0>(keyAndPos);
 	if (AgariChecker::GetInst()->isAgari(key)) {
-		totalTiles[tile] --;
+//		totalTiles[tile] --;
 		return true;
 	}
 
 	if (Is7Pair(totalTiles)) {
-		totalTiles[tile] --;
+//		totalTiles[tile] --;
 		return true;
 	}
 
 	std::vector<int> kanTiles;
+
 	for (int i = 0; i < totalTiles.size(); i ++) {
 		if (totalTiles[i] == 4) {
 			kanTiles.push_back(i);
 		}
 	}
+
 	int kanNum = kanTiles.size() - 1;
 	if (kanNum < 0) {
-		totalTiles[tile] --;
+//		totalTiles[tile] --;
 		return false;
 	}
 
@@ -149,35 +172,21 @@ bool PlayerState::checkAgari(int raw) {
 			totalTiles[kanTiles[kanCombs[kanNum][i][j]]] --;
 		}
 		printVec("check kan agari", totalTiles);
-		auto keys = AgariChecker::GetInst()->getKey(totalTiles);
-		int key = std::get<0>(keys);
-//		int key = std::get<0>(AgariChecker::GetInst()->getKey(totalTiles));
+		auto [keys, keyPoses] = AgariChecker::GetInst()->getKey(totalTiles);
+//		auto keys = AgariChecker::GetInst()->getKey(totalTiles);
+//		int key = std::get<0>(keys);
 		bool isAgari = AgariChecker::GetInst()->isAgari(key);
 
 		for (int j = 0; j < kanCombs[kanNum][i].size(); j ++) {
 			totalTiles[kanTiles[kanCombs[kanNum][i][j]]] ++;
 		}
 		if (isAgari) {
-			totalTiles[tile] --;
+//			totalTiles[tile] --;
 			return true;
 		}
 	}
 
-//	for (int i = 0; i < totalTiles.size(); i ++) {
-//		if (totalTiles[i] == 4) {
-//			totalTiles[i] --;
-//			int key = std::get<0>(AgariChecker::GetInst()->getKey(totalTiles));
-//			if (AgariChecker::GetInst()->isAgari(key)) {
-//				totalTiles[tile] --;
-//				totalTiles[i] ++;
-//				return true;
-//			} else {
-//				totalTiles[i] ++;
-//			}
-//		}
-//	}
-
-	totalTiles[tile] --;
+//	totalTiles[tile] --;
 	return false;
 }
 
@@ -190,12 +199,13 @@ bool mayChow(int t0, int t1) {
 	if (t0 / 9 != t1 / 9) {
 		return false;
 	}
-	if ((t1 - t0) > 2) {
+	if (std::abs(t1 - t0) > 2) {
 		return false;
 	}
 	return true;
 }
 
+//input sorted
 bool mayChow(int t0, int t1, int t2) {
 	if (t2 >= 27 || t1 >= 27 || t0 >= 27) {
 		return false;
@@ -268,7 +278,6 @@ bool checkRegular(vector<int>& tiles, vector<int>& remains, int startIndex, bool
 	for (; (startIndex < tiles.size()) && (tiles[startIndex] <= 0); startIndex++ );
 
 	if (startIndex >= tiles.size()) {
-//		return true;
 		return checkLastRemain(remains, hasPair);
 	}
 
@@ -309,7 +318,6 @@ bool checkRegular(vector<int>& tiles, vector<int>& remains, int startIndex, bool
 		}
 	}
 
-	//TODO: tiralNum to be checked
 	int tileNum = tiles[startIndex];
 	//Above blocks has tried trialNum - 4 by default, 3 by pong trial, 2 by hasPair
 	int trialNum = std::min(tileNum, hasPair? 2: 1);
@@ -430,10 +438,10 @@ bool PlayerState::checkKan(int tile) {
 	return false;
 }
 
-int PlayerState::checkMeldType(int dropClientIndex, int tile) {
+MeldType PlayerState::checkMeldType(int dropClientIndex, int tile) {
 	if (reached) {
 		logger->debug("Player{}:{} reached, no meld", roomIndex, myIndex);
-		return -1;
+		return MeldType::Invalid;
 	}
 
 	bool canChow = false;
@@ -447,23 +455,23 @@ int PlayerState::checkMeldType(int dropClientIndex, int tile) {
 	canKan = checkKan(tile);
 
 	if (canChow && canPong && canKan) {
-		return 7;
+		return MeldType::ChowPongKan;
 	} else if (canPong && canKan) {
-		return 3;
+		return MeldType::PongKan;
 	} else if (canPong && canChow) {
-		return 5;
+		return MeldType::PongChow;
 	} else if (canPong) {
-		return 1;
+		return MeldType::Pong;
 	} else if (canChow) {
-		return 4;
+		return MeldType::Chow;
 	} else if (canKan) {
-		return 2;
+		return MeldType::Kan;
 	}
 
-	return -1;
+	return MeldType::Invalid;
 }
 
-void PlayerState::meldRaws(int raw, std::vector<int>& myRaws){
+void PlayerState::meldRaws(int raw, const std::vector<int>& myRaws){
 	logger->debug("State{}:{} meld raws {}", roomIndex, myIndex, raw);
 //	logger->debug("raws: {}", myRaws);
 	printVec("myRaws", myRaws);
@@ -477,7 +485,7 @@ void PlayerState::meldRaws(int raw, std::vector<int>& myRaws){
 		vector<int> melds(myRaws.begin(), myRaws.end());
 		melds.push_back(raw);
 		std::sort(melds.begin(), melds.end());
-		meldTiles.push_back(melds);
+		meldTiles.push_back(std::move(melds));
 
 		closed = false;
 	} else if (myRaws.size() == 4){ //kan, raw from self
@@ -487,7 +495,7 @@ void PlayerState::meldRaws(int raw, std::vector<int>& myRaws){
 			closeTiles[tile] = 0;
 			vector<int> melds(myRaws.begin(), myRaws.end());
 			std::sort(melds.begin(), melds.end());
-			meldTiles.push_back(melds);
+			meldTiles.push_back(std::move(melds));
 		} else { //Added open kan
 			logger->debug("add open kan");
 			for (int i = 0; i < meldTiles.size(); i ++) {
@@ -714,9 +722,10 @@ int PlayerState::calcReward() {
 	return 0;
 }
 
-int PlayerState::GetChowM(int raw, std::vector<int> meldRaws) {
+int PlayerState::GetChowM(int raw, const std::vector<int>& inputRaws) {
 	int m = 0;
 
+	std::vector<int> meldRaws(inputRaws.begin(), inputRaws.end());
 	meldRaws.push_back(raw);
 	std::sort(meldRaws.begin(), meldRaws.end());
 	int tile = meldRaws[0] / 4;
@@ -742,10 +751,11 @@ int PlayerState::GetChowM(int raw, std::vector<int> meldRaws) {
 	return m;
 }
 
-int PlayerState::GetPongM(int raw, std::vector<int> meldRaws) {
+int PlayerState::GetPongM(int raw, const std::vector<int>& inputRaws) {
 	int m = 0;
 	int tile = raw / 4;
 
+	std::vector<int> meldRaws(inputRaws.begin(), inputRaws.end());
 	meldRaws.push_back(raw);
 	std::sort(meldRaws.begin(), meldRaws.end());
 
@@ -785,7 +795,7 @@ int PlayerState::GetPongM(int raw, std::vector<int> meldRaws) {
 	return m;
 }
 
-int PlayerState::GetKanM(int raw, std::vector<int>& meldRaws) {
+int PlayerState::GetKanM(int raw, const std::vector<int>& meldRaws) {
 	int m = 0;
 	int tile = raw / 4;
 	int called = -1;
@@ -816,13 +826,13 @@ int PlayerState::GetKanM(int raw, std::vector<int>& meldRaws) {
 	return m;
 }
 
-int PlayerState::GetM(int type, int raw, std::vector<int>& meldRaws) {
+int PlayerState::GetM(MeldType type, int raw, const std::vector<int>& meldRaws) {
 	logger->debug("GetM type = {}, raw = {}", type, raw);
 	printVec("raws: ", meldRaws);
 	if (meldRaws.size() > 2) {
 		return GetKanM(raw, meldRaws);
 	} else {
-		if (type == 3) {
+		if (type == MeldType::ChowRspType) {
 			return GetChowM(raw, meldRaws);
 		} else {
 			return GetPongM(raw, meldRaws);

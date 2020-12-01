@@ -16,13 +16,11 @@ namespace {
 }
 //#include "selfserver/clientconn.h"
 
-SelfServer::SelfServer(int iPort, boost::asio::io_context& service)
-	: roomSeq(0),
-	  port(iPort),
-	  curClientIndex(0),
-	  ioService(service),
-	  acceptor(service,	boost::asio::ip::tcp::endpoint(boost::asio::ip::tcp::v4(), port)),
-	  pollTimer(service)
+SelfServer::SelfServer(int iPort, boost::asio::io_context& service):
+	 port(iPort),
+	 ioService(service),
+	 acceptor(service,	boost::asio::ip::tcp::endpoint(boost::asio::ip::tcp::v4(), port)),
+	 pollTimer(service)
 {
 	std::cout << "Server constructed " << std::endl;
 	logger->info("Server constructed ");
@@ -34,7 +32,7 @@ SelfServer::SelfServer(int iPort, boost::asio::io_context& service)
 
 void SelfServer::start() {
 	logger->debug("To start pollTimer");
-	pollTimer.expires_from_now(boost::posix_time::seconds((int)CleanUpTimeout));
+	pollTimer.expires_from_now(boost::posix_time::seconds((int)ServerConfig::CleanUpTimeout));
 	pollTimer.async_wait(boost::bind(&SelfServer::handleRoomPoll, this->shared_from_this(),
 							boost::asio::placeholders::error));
 	logger->debug("pollTimer started ");
@@ -52,12 +50,8 @@ std::pair<std::shared_ptr<Room>, int> SelfServer::getRoomIndex() {
 		logger->info("Room {} created", roomSeq);
 		rooms[roomSeq] = curRoom;
 		curClientIndex = 0;
-//		index = 0;
 	}
-//	} else {
-//		index = curClientIndex;
-//		curClientIndex  ++;
-//	}
+
 	index = curClientIndex;
 	curClientIndex ++;
 
@@ -101,7 +95,7 @@ void SelfServer::handleRoomPoll(const boost::system::error_code& error) {
 			}
 		}
 
-		pollTimer.expires_from_now(boost::posix_time::seconds((int)CleanUpTimeout));
+		pollTimer.expires_from_now(boost::posix_time::seconds((int)ServerConfig::CleanUpTimeout));
 		pollTimer.async_wait(boost::bind(&SelfServer::handleRoomPoll, this->shared_from_this(),
 								boost::asio::placeholders::error));
 	}

@@ -17,6 +17,8 @@
 
 #include <iostream>
 #include <string>
+#include <random>
+#include <algorithm>
 
 namespace {
 void testAgariChecker() {
@@ -185,43 +187,43 @@ void testReach() {
 
 //TODO: Check M
 void testM() {
-	int type = 1;
+	MeldType type = MeldType::PongRspType;
 	int raw = 65;
 	std::vector<int> raws{66, 67};
 	int m = PlayerState::GetM(type, raw, raws);
 	std::cout << "m = " << m << std::endl << std::endl;
 
-	type = 3;
+	type = MeldType::ChowRspType;
 	raw = 13;
 	raws = {17, 21};
 	m = PlayerState::GetM(type, raw, raws);
 	std::cout << "m = " << m << std::endl << std::endl;;
 
-	type = 1;
+	type = MeldType::PongRspType;
 	raw = 132;
 	raws = {133, 134};
 	m = PlayerState::GetM(type, raw, raws);
 	std::cout << "m = " << m << std::endl << std::endl;
 
-	type = 3;
+	type = MeldType::ChowRspType;
 	raw = 61;
 	raws = {53, 59};
 	m = PlayerState::GetM(type, raw, raws);
 	std::cout << "m = " << m << std::endl << std::endl;
 
-	type = 3;
+	type = MeldType::ChowRspType;
 	raw = 77;
 	raws = {75, 83};
 	m = PlayerState::GetM(type, raw, raws);
 	std::cout << "m = " << m << std::endl << std::endl;
 
-	type = 3;
+	type = MeldType::ChowRspType;
 	raw = 30;
 	raws = {22, 27};
 	m = PlayerState::GetM(type, raw, raws);
 	std::cout << "m = " << m << std::endl << std::endl;
 
-	type = 1;
+	type = MeldType::PongRspType;
 	raw = 85;
 	raws = {86, 87};
 	m = PlayerState::GetM(type, raw, raws);
@@ -253,10 +255,43 @@ void testPointer() {
 	int *b = &a;
 	std::cout << "Size of pointer " << sizeof(b) << std::endl;
 }
+
+void testRefObj() {
+	struct RefObj {
+		int& obj;
+		RefObj(int& input): obj(input) {
+			obj ++;
+		}
+		~RefObj() {
+			obj --;
+		}
+	};
+
+	std::vector<int> objs(4, 1);
+	std::cout << "Orig value " << objs[2] << std::endl;
+	{
+		RefObj refObj(objs[2]);
+		std::cout << "Obj value " << objs[2] << std::endl;
+	}
+	std::cout << "Recovered? " << objs[2] << std::endl;
+}
+
+void testRandom() {
+	std::vector<int> data {1, 2, 3, 4, 5, 6, 7, 8};
+
+	std::random_device rd;
+	std::mt19937 gen(rd());
+
+	std::shuffle(data.begin(), data.end(), gen);
+
+	for (auto d: data) {
+		std::cout << d << std::endl;
+	}
+}
 }
 
 int main(int argc, char** argv) {
-	spdlog::set_level(spdlog::level::info);
+//	spdlog::set_level(spdlog::level::info);
 
 //	testAgariChecker();
 //	stateAgari();
@@ -264,6 +299,8 @@ int main(int argc, char** argv) {
 //	testM();
 //	testParse();
 
-	testPointer();
+//	testPointer();
+//	testRefObj();
+	testRandom();
 }
 

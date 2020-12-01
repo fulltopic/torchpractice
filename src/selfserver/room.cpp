@@ -8,7 +8,6 @@
 
 #include "selfserver/clientconn.h"
 #include "selfserver/room.h"
-#include "selfserver/tilepatternutils.h"
 
 #include "tenhouclient/fsmtypes.h"
 #include "tenhouclient/tenhoumsgparser.h"
@@ -18,6 +17,7 @@
 #include <iostream>
 #include <chrono>
 #include <random>
+#include <algorithm>
 #include <map>
 #include <set>
 #include <mutex>
@@ -61,7 +61,7 @@ namespace {
 	auto logger = Logger::GetLogger();
 }
 
-WaitingObj::WaitingObj(): reqs(PU::PlayerNum), rspSeq(0)
+Room::WaitingObj::WaitingObj()
 {
 	for (int i = 0; i < PU::PlayerNum; i ++) {
 		reqs[i].clientIndex = i;
@@ -69,9 +69,9 @@ WaitingObj::WaitingObj(): reqs(PU::PlayerNum), rspSeq(0)
 	resetNoLock();
 }
 
-void WaitingObj::resetNoLock() {
+void Room::WaitingObj::resetNoLock() {
 	for (int i = 0; i < PU::PlayerNum; i ++) {
-		reqs[i].indType = -1;
+		reqs[i].indType = MeldType::Invalid;
 		reqs[i].received = false;
 		reqs[i].accepted = false;
 		reqs[i].rsped = false;
@@ -80,12 +80,12 @@ void WaitingObj::resetNoLock() {
 	rspSeq = 0;
 }
 
-void WaitingObj::reset() {
+void Room::WaitingObj::reset() {
 	std::unique_lock<std::mutex> lock(m);
 	resetNoLock();
 }
 
-void WaitingObj::req(int index, int fromWho, int indType, int raw) {
+void Room::WaitingObj::req(int index, int fromWho, MeldType indType, int raw) {
 	std::unique_lock<std::mutex> lock(m);
 	reqs[index].fromWho = fromWho;
 	reqs[index].indType = indType;
@@ -95,7 +95,7 @@ void WaitingObj::req(int index, int fromWho, int indType, int raw) {
 	reqs[index].rsped = false;
 }
 
-bool WaitingObj::receive(int index) {
+bool Room::WaitingObj::receive(int index) {
 	std::unique_lock<std::mutex> lock(m);
 	reqs[index].received = true;
 	reqs[index].rspSeq = rspSeq;
@@ -104,7 +104,7 @@ bool WaitingObj::receive(int index) {
 	return allRspRcvedNoLock();
 }
 
-void WaitingObj::accept(int index, int rspType, std::vector<int> raws) {
+void Room::WaitingObj::accept(int index, MeldType rspType, std::vector<int> raws) {
 	std::unique_lock<std::mutex> lock(m);
 	reqs[index].accepted = true;
 	reqs[index].indType = rspType;
@@ -125,47 +125,35 @@ void WaitingObj::accept(int index, int rspType, std::vector<int> raws) {
 		}
 	}
 
-//	reqs[index].raws = std::move(raws);
-	reqs[index].raws = raws;
+	reqs[index].raws = std::move(raws);
+//	reqs[index].raws = raws;
 }
 
-//TODO: No one calls
-void WaitingObj::process(int index) {
-	std::unique_lock<std::mutex> lock(m);
-	reqs[index].rsped = true;
 
-	for (int i = 0; i < PU::PlayerNum; i ++) {
-		if ((reqs[index].indType >= 0) && (!reqs[index].rsped)) {
-			return;
-		}
-	}
-	resetNoLock();
-}
-
-bool WaitingObj::received(int index) {
+bool Room::WaitingObj::received(int index) {
 	std::unique_lock<std::mutex> lock(m);
 	return reqs[index].received;
 }
 
-bool WaitingObj::accepted(int index){
+bool Room::WaitingObj::accepted(int index){
 	std::unique_lock<std::mutex> lock(m);
 	return reqs[index].accepted;
 }
 
-bool WaitingObj::processed(int index) {
+bool Room::WaitingObj::processed(int index) {
 	std::unique_lock<std::mutex> lock(m);
 	return reqs[index].rsped;
 }
 
-bool WaitingObj::reqed(int index) {
+bool Room::WaitingObj::reqed(int index) {
 	std::unique_lock<std::mutex> lock(m);
-	return (reqs[index].indType >= 0);
+	return (reqs[index].indType != MeldType::Invalid);
 }
 
-bool WaitingObj::reqed() {
+bool Room::WaitingObj::reqed() {
 	std::unique_lock<std::mutex> lock(m);
 	for (int i = 0; i < PU::PlayerNum; i ++) {
-		if (reqs[i].indType >= 0) {
+		if (reqs[i].indType != MeldType::Invalid) {
 			return true;
 		}
 	}
@@ -173,31 +161,46 @@ bool WaitingObj::reqed() {
 	return false;
 }
 
-bool WaitingObj::isAgari(int index) {
-	const static std::set<int> ronInds {6, 7, 9};
+bool Room::WaitingObj::isAgari(int index) {
+//	const static std::set<MeldType> ronInds {
+//		MeldType::RonRspInd6, MeldType::RonRspInd7, MeldType::RonRspInd9};
 
 	std::unique_lock<std::mutex> lock(m);
 	if (reqs[index].accepted) {
-		return (ronInds.find(reqs[index].indType) != ronInds.end());
+//		return (ronInds.find(reqs[index].indType) != ronInds.end());
+		return MeldTypeHelper::IsRonInd(reqs[index].indType);
 	}
 
 	return false;
 }
 
-bool WaitingObj::isReach(int index) {
+bool Room::WaitingObj::isReach(int index) {
 	std::unique_lock<std::mutex> lock(m);
-	return (reqs[index].indType == 32);
+	return MeldTypeHelper::IsReachInd(reqs[index].indType);
+//	return (reqs[index].indType == 32);
 }
 
-int WaitingObj::getRspIndex() {
+int Room::WaitingObj::getRspIndex() {
 	int index = -1;
 	for (int i = 0; i < PU::PlayerNum; i ++) {
 		if (reqs[i].accepted) {
+//			if (index < 0) {
+//				index = i;
+//			} else if (reqs[index].indType > reqs[i].indType){ //chow prior to pong
+//				index = i;
+//			} else if (reqs[index].indType == reqs[i].indType) {
+//				if (reqs[index].rspSeq > reqs[i].rspSeq) {
+//					index = i;
+//				}
+//			}
+
 			if (index < 0) {
 				index = i;
-			} else if (reqs[index].indType > reqs[i].indType){ //chow prior to pong
+			} else if (MeldTypeHelper::Prior2(reqs[index].indType, reqs[i].indType)) {
 				index = i;
-			} else if (reqs[index].indType == reqs[i].indType) {
+			} else if (MeldTypeHelper::Prior2(reqs[i].indType, reqs[index].indType)) {
+				//nothing
+			} else {
 				if (reqs[index].rspSeq > reqs[i].rspSeq) {
 					index = i;
 				}
@@ -208,8 +211,7 @@ int WaitingObj::getRspIndex() {
 	return index;
 }
 
-//TODO: name is misleading
-int WaitingObj::getNextDistIndex() {
+int Room::WaitingObj::getNextDistIndex() {
 	for (int i = 0; i < PU::PlayerNum; i ++) {
 		if (reqed(i)) {
 			return (reqs[i].fromWho + 1) % PU::PlayerNum;
@@ -218,20 +220,16 @@ int WaitingObj::getNextDistIndex() {
 
 	return 0; //impossible
 }
-//int WaitingObj::getRaw(int index){
-//	std::unique_lock<std::mutex> lock(m);
-//	return reqs[index].raw;
-//}
 
 //fromWho, indType, raw
-std::vector<int> WaitingObj::getActInfo(int index) {
+std::tuple<int, MeldType, int> Room::WaitingObj::getActInfo(int index) {
 	std::unique_lock<std::mutex> lock(m);
 	return {reqs[index].fromWho, reqs[index].indType, reqs[index].raw};
 }
 
-bool WaitingObj::allRspRcvedNoLock() {
+bool Room::WaitingObj::allRspRcvedNoLock() {
 	for (int i = 0; i < PU::PlayerNum; i ++) {
-		if ((reqs[i].indType >= 0) && (!reqs[i].received)) {
+		if (MeldTypeHelper::IsValid(reqs[i].indType) && (!reqs[i].received)) {
 			return false;
 		}
 	}
@@ -239,19 +237,19 @@ bool WaitingObj::allRspRcvedNoLock() {
 	return true;
 }
 
-bool WaitingObj::allRspRcved() {
+bool Room::WaitingObj::allRspRcved() {
 	std::unique_lock<std::mutex> lock(m);
 
 	return allRspRcvedNoLock();
 }
 
-void WaitingObj::printReqInfo(int index) {
+void Room::WaitingObj::printReqInfo(int index) {
 	logger->debug("{} from {}: raw = {}, indType = {}, {}, {}, {}",
 			index, reqs[index].fromWho, reqs[index].raw, reqs[index].indType,
 			reqs[index].received, reqs[index].accepted, reqs[index].rsped);
 }
 
-void WaitingObj::printReqsInfo() {
+void Room::WaitingObj::printReqsInfo() {
 	for (int i = 0; i < PU::PlayerNum; i ++) {
 		printReqInfo(i);
 	}
@@ -260,24 +258,12 @@ void WaitingObj::printReqsInfo() {
 
 Room::Room(uint32_t iSeq)
 	: seq(iSeq),
-	  working(true),
-	  roomState(AuthState),
-	  oyaIndex(-1),
-	  tileIndex(0), //What's this for?
-	  allReady(0),
-	  allBye(0),
-	  allGo(0),
-	  nextClientIndex(-1),
-	  clients(PU::PlayerNum),
-//	  states(PU::PlayerNum),
-//	  reached(PU::PlayerNum, false),
-	  tens(PU::PlayerNum, PU::InitTen),
-	  wallData(nullptr)
+	  roomState(AuthState)
 {
 	srand(time(NULL));
 
 	unsigned seed = std::chrono::system_clock::now().time_since_epoch().count();
-//	gen = std::mt19937(seed);
+	gen = std::mt19937(rd());
 
 	for (int i = 0; i < PU::PlayerNum; i ++) {
 		states.push_back(std::move(PlayerState(i, seq)));
@@ -294,12 +280,15 @@ void Room::addClient(int index, std::shared_ptr<ClientConn> client) {
 	clients[index] = client;
 }
 
-//void Room::clientReady(int clientIndex) {
-//	allReady = allReady | (1 << clientIndex);
-//}
-
 int Room::decideNextOya() {
 	return rand() % PU::PlayerNum;
+}
+
+int Room::getAbsIndex(const int index, const int clientIndex) const {
+	return (index + clientIndex) % PU::PlayerNum;
+}
+int Room::getRelaIndex(const int index, const int clientIndex) const {
+	return (index - clientIndex + PU::PlayerNum) % PU::PlayerNum;
 }
 
 void Room::sceneInit() {
@@ -313,12 +302,12 @@ void Room::sendInitMsg(int clientIndex) {
 	std::ostream output(&buf);
 
 	output << "<INIT seed=\"0,0,0,2,2,71\" ";
-	output << "ten=\"" << std::to_string(tens[0])
-				<< "," << std::to_string(tens[1])
-				<< "," << std::to_string(tens[2])
-				<< "," << std::to_string(tens[3])
+	output << "ten=\"" << std::to_string(tens[getAbsIndex(0, clientIndex)])
+				<< "," << std::to_string(tens[getAbsIndex(1, clientIndex)])
+				<< "," << std::to_string(tens[getAbsIndex(2, clientIndex)])
+				<< "," << std::to_string(tens[getAbsIndex(3, clientIndex)])
 				<< "\" ";
-	output << "oya=\"" + std::to_string((oyaIndex + clientIndex) % PU::PlayerNum) + "\" ";
+	output << "oya=\"" + std::to_string(getAbsIndex(oyaIndex, clientIndex)) + "\" ";
 	output << "hai=\"" ;
 	for (int i = 0; i < states[clientIndex].acceptRaws.size(); i ++) {
 		if (i == 0) {
@@ -331,11 +320,9 @@ void Room::sendInitMsg(int clientIndex) {
 	output << "\" ";
 	output << "/>";
 
-//	S msg = head + " " + tenMsg + " " + oyaMsg + " " + haiMsg;
 	clients[clientIndex]->send(buf.str());
 }
 
-//TODO: To be locked
 void Room::gameInit() {
 	/*
 	 * 1. create wall
@@ -343,30 +330,27 @@ void Room::gameInit() {
 	 * 3. No dora
 	 * 4. clear board
 	 */
-//	waitingReqs.clear();
 	wo.reset();
 
 	reachRaws.clear();
 	for (int i = 0; i < PU::PlayerNum; i ++) {
 		reachRaws[i] = -1;
 	}
-//	allReady = 0;
 
 
-//	wall = std::vector<int>(PU::TotalTileNum, 0);
-//	for (int i = 0; i < PU::TotalTileNum; i ++) {
-//		wall[i] = i;
-//	}
+	for (int i = 0; i < PU::TotalTileNum; i ++) {
+		wall[i] = i;
+	}
 
-//	std::random_shuffle(wall.begin(), wall.end(), gen);
-	rndTensor = torch::randperm(134, torch::TensorOptions().dtype(at::kLong));
-	wallData = rndTensor.data_ptr<long>();
-	std::cout << "rndTensor data " << std::endl;
+	std::shuffle(wall.begin(), wall.end(), gen);
+//	rndTensor = torch::randperm(136, torch::TensorOptions().dtype(at::kLong));
+//	wallData = rndTensor.data_ptr<long>();
+//	wallData = rndTensor.to(torch::kLong).data_ptr<long>();
+	std::cout << "wall data " << std::endl;
 	for (int i = 0; i < 10; i ++) {
-		std::cout << wallData[i] << ", ";
+		std::cout << wall[i] << ", ";
 	}
 	std::cout << std::endl;
-//	wallData = rndTensor.to(torch::kLong).data_ptr<long>();
 
 	oyaIndex = decideNextOya();
 
@@ -377,7 +361,8 @@ void Room::gameInit() {
 	tileIndex = 0;
 	for (int i = 0; i < PU::NormTile; i ++) {
 		for (int j = 0; j < PU::PlayerNum; j ++) {
-			int raw = wallData[tileIndex];
+//			int raw = wallData[tileIndex]; //random
+			int raw = wall[tileIndex];
 			int tile = raw / 4;
 			tileIndex ++;
 			states[j].closeTiles[tile] ++;
@@ -451,7 +436,7 @@ void Room::processRyu() {
 		std::ostream output(&buf);
 		output << "<RYUUKYOKU ba=\"0,0\" sc=\"";
 		for (int j = 0; j < PU::PlayerNum; j ++) {
-			output << tens[(i + j) % PU::PlayerNum] << "," << RyuReward;
+			output << tens[getAbsIndex(j, i)] << "," << RyuReward;
 			if (j != (PU::PlayerNum - 1)) {
 				output << ",";
 			}
@@ -524,15 +509,15 @@ void Room::processAgari(int who, int fromWho) {
 
 		output << "machi=\"\" ten=\"\" yaku=\"\" ";
 
-		output << "who=\"" << (who - i + PU::PlayerNum) % PU::PlayerNum
-				<< "\" fromWho=\"" << (fromWho - i + PU::PlayerNum) % PU::PlayerNum << "\" "
+		output << "who=\"" << getRelaIndex(who, i)
+				<< "\" fromWho=\"" << getRelaIndex(fromWho, i) << "\" "
 				<< "sc=\"";
 
 		for (int j = 0; j < PU::PlayerNum; j ++) {
 			if (j != 0) {
 				output << ",";
 			}
-			int nextClientIndex = (i + j) % PU::PlayerNum;
+			int nextClientIndex = getAbsIndex(j, i);
 			output << tens[nextClientIndex] << "," << deltas[nextClientIndex];
 		}
 
@@ -548,12 +533,14 @@ void Room::processAgari(int who, int fromWho) {
 }
 
 void Room::distRaw(int clientIndex) {
-	if (tileIndex >= (134 - 14)) {
+	if (tileIndex >= (136 - 14)) {
 		processRyu();
 		return;
 	}
 
-	int raw = wallData[tileIndex];
+	//random
+//	int raw = wallData[tileIndex];
+	int raw = wall[tileIndex];
 	int tile = raw / 4;
 	tileIndex ++;
 	logger->debug("distRaw {} to {}", raw, clientIndex);
@@ -565,21 +552,21 @@ void Room::distRaw(int clientIndex) {
 	//TODO: Check ankan
 	if (ron) {
 		logger->info("Room{} detected ron {}", seq, clientIndex);
-		wo.req(clientIndex, clientIndex, 16, raw); //tsumo
+		wo.req(clientIndex, clientIndex, MeldType::Tsumo, raw); //tsumo
 		roomState = IndState;
 		clients[clientIndex]->send("<T" + std::to_string(raw) + " t=\"16\"/>");
 	} else if (states[clientIndex].checkReach()) {
 		logger->info("Room{} detected reach {}", seq, clientIndex);
 		roomState = ReachState;
-		wo.req(clientIndex, clientIndex, 32, raw); //reach
+		wo.req(clientIndex, clientIndex, MeldType::Reach, raw); //reach
 		clients[clientIndex]->send("<T" + std::to_string(raw) + " t=\"32\"/>");
 	} else {
 		roomState = DropState;
 		clients[clientIndex]->send("<T" + std::to_string(raw) + "/>");
 	}
-	clients[(clientIndex + 1) % PU::PlayerNum]->send("<U/>");
-	clients[(clientIndex + 2) % PU::PlayerNum]->send("<V/>");
-	clients[(clientIndex + 3) % PU::PlayerNum]->send("<W/>");
+	clients[getAbsIndex(1, clientIndex)]->send("<U/>");
+	clients[getAbsIndex(2, clientIndex)]->send("<V/>");
+	clients[getAbsIndex(3, clientIndex)]->send("<W/>");
 
 	logger->info("Room{}:{} dist {}", seq, clientIndex, raw);
 }
@@ -600,19 +587,19 @@ void Room::processDropMsg(int clientIndex, S& msg) {
 
 
 	for (int i = 1; i < PU::PlayerNum; i ++) {
-		int nextIndex = (i + clientIndex) % PU::PlayerNum;
+		int nextIndex = getAbsIndex(i, clientIndex);
 		if (states[nextIndex].checkAgari(raw)) {
 			logger->warn("Room{}:{} detected agari {} by {}", seq, clientIndex, nextIndex, raw);
-			wo.req(nextIndex, clientIndex, 9, raw);
+			wo.req(nextIndex, clientIndex, MeldType::RonByDrop, raw);
 		}
 	}
 
 	for (int i = 1; i < PU::PlayerNum; i ++) {
-		int nextIndex = (clientIndex + i) % PU::PlayerNum;
+		int nextIndex = getAbsIndex(i, clientIndex);
 		if (!wo.reqed(nextIndex)) {
-			int meldType = states[nextIndex].checkMeldType(clientIndex, tile);
+			auto meldType = states[nextIndex].checkMeldType(clientIndex, tile);
 			logger->debug("Room{}:{} detected meld {} by {}: {}", seq, clientIndex, nextIndex, raw, meldType);
-			if (meldType >= 0) {
+			if ( meldType != MeldType::Invalid) {
 				wo.req(nextIndex, clientIndex, meldType, raw);
 			}
 		}
@@ -620,8 +607,8 @@ void Room::processDropMsg(int clientIndex, S& msg) {
 
 	logger->debug("Room{}:{} collected waiting reqs:", seq, clientIndex);
 	for (int i = 0; i < PU::PlayerNum; i ++) {
-		std::vector<int> actInfo = wo.getActInfo(i);
-		logger->debug("who={}, fromWho={}, raw={}, type={}", i, actInfo[0], actInfo[2], actInfo[1]);
+		auto [fromWho, meldType, raw] = wo.getActInfo(i);
+		logger->debug("who={}, fromWho={}, raw={}, type={}", i, fromWho, raw, meldType);
 	}
 
 
@@ -633,24 +620,26 @@ void Room::processDropMsg(int clientIndex, S& msg) {
 	}
 
 	for (int i = 0; i < PU::PlayerNum; i ++) {
-		int nextClientIndex = (i + clientIndex) % PU::PlayerNum;
-		int relaIndex = (clientIndex - nextClientIndex + PU::PlayerNum) % PU::PlayerNum;
+		int nextClientIndex = getAbsIndex(i, clientIndex);
+		int relaIndex = getRelaIndex(clientIndex, nextClientIndex);
+//		int relaIndex = (clientIndex - nextClientIndex + PU::PlayerNum) % PU::PlayerNum;
 		if (!wo.reqed(nextClientIndex)) {
 			clients[nextClientIndex]->send("<" + dropMsgHead[relaIndex] + std::to_string(raw) + "/>");
 		} else {
-			clients[nextClientIndex]->send("<" + dropMsgHead[relaIndex] + std::to_string(raw) + " t=\"" + std::to_string(wo.getIndType(nextClientIndex)) + "\"/>");
+			clients[nextClientIndex]->send("<" + dropMsgHead[relaIndex] + std::to_string(raw) + " t=\""
+											+ std::to_string(static_cast<int>(wo.getIndType(nextClientIndex))) + "\"/>");
 		}
 	}
 
 	if (!woReqed) {
 		logger->debug("Room{}:{} {} No special indicator, next round", seq, clientIndex, raw);
-		distRaw((clientIndex + 1) % PU::PlayerNum);
+		distRaw(getAbsIndex(1, clientIndex));
 		return;
 	}
 
 }
 
-void Room::processIndMsg(int clientIndex, S msg) {
+void Room::processIndMsg(int clientIndex, S& msg) {
 	logger->debug("Room{}:{} processIndMsg: {}", seq, clientIndex, msg);
 	if (msg.find("<N") == S::npos) {
 		logger->error("Room{}:{} IndState unexp: {}", seq, clientIndex, msg);
@@ -672,12 +661,12 @@ void Room::processIndMsg(int clientIndex, S msg) {
 	} else {
 //		logger->debug("items size = {}", items.size());
 		vector<int> raws;
-		int indType = -1;
+		MeldType indType = MeldType::Invalid;
 		for (int i = 0; i < items.size(); i ++) {
 //			logger->debug("Parse item {}", items[i]);
 			if (items[i].find("type") != S::npos) {
 				int type = P::ParseHead("type=\"", items[i]);
-				indType = type;
+				indType = static_cast<MeldType>(type);
 			} else if (items[i].find("hai0") != S::npos) {
 				int hai = P::ParseHead("hai0=\"", items[i]);
 				raws.push_back(hai);
@@ -696,10 +685,10 @@ void Room::processIndMsg(int clientIndex, S msg) {
 		for (auto raw: raws) {
 			std::cout << raw << ", ";
 		}
-//		wo.accept(clientIndex, indType, std::move(raws));
-		wo.accept(clientIndex, indType, raws);
-		auto actInfo = wo.getActInfo(clientIndex);
-		logger->info("Room{}:{} received req {} rsp {}", seq, clientIndex, actInfo[0], actInfo[2]);
+		wo.accept(clientIndex, indType, std::move(raws));
+//		wo.accept(clientIndex, indType, raws);
+		auto [fromWho, dummy, raw] = wo.getActInfo(clientIndex);
+		logger->info("Room{}:{} received req {} rsp {}", seq, clientIndex, fromWho, raw);
 	}
 
 	//put wo.receive in previous position may cause race between receive and race
@@ -736,24 +725,24 @@ void Room::processIndMsg(int clientIndex, S msg) {
 		wo.reset();
 		distRaw(nextClientIndex);
 	} else {
-		//TODO: getActInfo could return &
-		//TODO: room is friend class of wo
-		std::vector<int> actInfo = wo.getActInfo(rspWaitIndex);
-		logger->info("Room{}:{}  {} meld {} from {}", seq, clientIndex, rspWaitIndex, actInfo[1], actInfo[0]);
+		auto [fromWho, indType, raw] = wo.getActInfo(rspWaitIndex);
+		logger->info("Room{}:{}  {} meld {} from {}", seq, clientIndex, rspWaitIndex, indType, fromWho);
 
 		auto meldRaws = wo.getMeldRaws(rspWaitIndex);
-		states[rspWaitIndex].meldRaws(actInfo[2], meldRaws);
-		int m = PlayerState::GetM(actInfo[1], actInfo[2], meldRaws);
+		states[rspWaitIndex].meldRaws(raw, meldRaws);
+		int m = PlayerState::GetM(indType, raw, meldRaws);
 
 		wo.reset();
 		roomState = DropState;
 
 		for (int j = 0; j < PU::PlayerNum; j ++) {
-			int relaIndex = (rspWaitIndex - j + PU::PlayerNum) % PU::PlayerNum;
+//			int relaIndex = (rspWaitIndex - j + PU::PlayerNum) % PU::PlayerNum;
+			int relaIndex = getRelaIndex(rspWaitIndex, j);
 			clients[j]->send("<N who=\"" + std::to_string(relaIndex) + "\" m=\"" + std::to_string(m) + "\" />");
 		}
 
-		if ((actInfo[1] != 1) && (actInfo[1] != 3)) { //kan case
+		if (MeldTypeHelper::IsKanRsp(indType)) {
+//		if ((actInfo[1] != 1) && (actInfo[1] != 3)) { //kan case
 			distRaw(rspWaitIndex);
 		}
 	}
@@ -766,12 +755,13 @@ void Room::processReachMsg(int clientIndex, S& msg) {
 		int raw = P::ParseHead("p=\"", items[1]);
 		int tile = raw / 4;
 
-		if (states[clientIndex].reached && wo.getActInfo(clientIndex)[2] == raw) {
+		if (states[clientIndex].reached && std::get<2>(wo.getActInfo(clientIndex)) == raw) {
 			logger->info("Room{}:{}: Received reach response: {}", seq, clientIndex, raw);
 			wo.reset();
 			//tens adjusted at the end of game
 			for (int i = 0; i < PU::PlayerNum; i ++) {
-				int nextClientIndex = (clientIndex - i + PU::PlayerNum) % PU::PlayerNum;
+				int nextClientIndex = getRelaIndex(clientIndex, i);
+//				int nextClientIndex = (clientIndex - i + PU::PlayerNum) % PU::PlayerNum;
 				std::stringbuf buf;
 				std::ostream output(&buf);
 
@@ -780,7 +770,7 @@ void Room::processReachMsg(int clientIndex, S& msg) {
 					if (j != 0) {
 						output << ",";
 					}
-					output << tens[(i + j) % PU::PlayerNum];
+					output << tens[getAbsIndex(j, i)];
 				}
 				output << "\" step=\"2\"/>";
 
@@ -811,11 +801,12 @@ void Room::processReachMsg(int clientIndex, S& msg) {
 
 		roomState = ReachState;
 		states[clientIndex].reached = true;
-		wo.req(clientIndex, clientIndex, 32, raw);
+		wo.req(clientIndex, clientIndex, MeldType::Reach, raw);
 		logger->debug("Room{}:{} declare to reahc by {}", seq, clientIndex, raw);
 
 		for (int i = 0; i < PU::PlayerNum; i ++) {
-			int nextClientIndex = (clientIndex - i + PU::PlayerNum) % PU::PlayerNum;
+			int nextClientIndex = getRelaIndex(clientIndex, i);
+//			int nextClientIndex = (clientIndex - i + PU::PlayerNum) % PU::PlayerNum;
 			clients[i]->send("<REACH who=\"" + std::to_string(nextClientIndex) + "\" step=\"1\"/>");
 		}
 	}
@@ -834,7 +825,7 @@ void Room::processBye(int clientIndex) {
 	}
 }
 
-bool Room::processAuthMsg(int clientIndex, S msg) {
+bool Room::processAuthMsg(int clientIndex, S& msg) {
 	logger->debug("Room{}:{} processAuthMsg: {}", seq, clientIndex, msg);
 
 	//Hard code all responses
@@ -884,7 +875,7 @@ bool Room::processAuthMsg(int clientIndex, S msg) {
 	}
 }
 
-void Room::processInitMsg(int clientIndex, S msg) {
+void Room::processInitMsg(int clientIndex, S& msg) {
 	if (msg.find("NEXTREADY") != S::npos) {
 		logger->debug("Room{}:{} NEXTREADY", seq, clientIndex);
 
@@ -917,7 +908,7 @@ void Room::processInitMsg(int clientIndex, S msg) {
 	}
 }
 
-void Room::processSceneEndMsg(int clientIndex, S msg) {
+void Room::processSceneEndMsg(int clientIndex, S& msg) {
 	if (msg.find("BYE") == S::npos) {
 		logger->error("Room{}:{} InitState unexp msg: {}", seq, clientIndex, msg);
 		return;
@@ -926,7 +917,7 @@ void Room::processSceneEndMsg(int clientIndex, S msg) {
 	processBye(clientIndex);
 }
 
-void Room::processMsg(int clientIndex, S msg) {
+void Room::processMsg(int clientIndex, S& msg) {
 	if (msg.find("<Z") != S::npos) {
 //		logger->info("Room{}:{} KA", seq, clientIndex);
 		return;

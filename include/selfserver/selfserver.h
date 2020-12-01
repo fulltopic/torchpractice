@@ -20,19 +20,20 @@
 #include "room.h"
 #include "clientconn.h"
 
+enum class ServerConfig {
+	CleanUpTimeout = 60 * 2,
+};
+
 class SelfServer:
 		public std::enable_shared_from_this<SelfServer>  {
 private:
-	enum {
-		CleanUpTimeout = 60 * 2,
-	};
 	std::map<uint32_t, std::shared_ptr<Room>> rooms;
-	uint32_t roomSeq;
+	uint32_t roomSeq = 0;
 
 	const int port;
 	std::mutex roomMutex;
 	std::shared_ptr<Room> curRoom;
-	int curClientIndex;
+	int curClientIndex = 0;
 
 	boost::asio::io_context& ioService;
 	boost::asio::ip::tcp::acceptor acceptor;

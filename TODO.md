@@ -23,3 +23,5 @@ void RNNImplBase<Derived>::reset() -->
 void RNNImplBase<Derived>::reset_parameters()
 
 * Some torch functions defined in nn/init.cpp
+
+test

@@ -32,10 +32,10 @@ private:
 
 	std::weak_ptr<Room> room;
 	boost::asio::ip::tcp::socket skt;
-	boost::array<char, 512> rcvBuf;
+	boost::array<char, RcvBufSize> rcvBuf;
 
-	boost::lockfree::spsc_queue<int, boost::lockfree::capacity<8>> wrtBufIndice;
-	boost::array<char[512], 8> wrtBufs;
+	boost::lockfree::spsc_queue<int, boost::lockfree::capacity<WrtBufCap>> wrtBufIndice;
+	boost::array<char[RcvBufSize], 8> wrtBufs;
 
 	int index;
 	int roomIndex;
@@ -49,6 +49,11 @@ private:
 	boost::asio::deadline_timer testTimer;
 	void testTimerHandle(const boost::system::error_code& e);
 
+	ClientConn(const ClientConn& ) = delete;
+	ClientConn& operator= (const ClientConn&) = delete;
+	ClientConn(const ClientConn&&) = delete;
+	ClientConn& operator= (const ClientConn&&) = delete;
+
 public:
 	~ClientConn();
 
@@ -58,7 +63,8 @@ public:
 
 //	void send(std::string& msg);
 //	void send(std::string&& msg);
-	void send(std::string msg);
+	//TODO: &&
+	void send(const std::string& msg);
 	void rcv();
 
 	inline boost::asio::ip::tcp::socket& getSocket() {

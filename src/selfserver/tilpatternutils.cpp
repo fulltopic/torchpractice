@@ -60,28 +60,49 @@ bool TilePatternUtils::IsOrphan(const vector<int>& tiles) {
 }
 
 S TilePatternUtils::GenScMsg (int index, const std::vector<int>& tens, const std::vector<int>& gains) {
-	S scMsg = "sc=\"" + std::to_string(tens[index]) + "," + std::to_string(gains[index]);
-	for (int j = 1; j < PlayerNum; j ++) {
-		scMsg = scMsg + "," + std::to_string(tens[(index + j) %  PlayerNum]) + "," + std::to_string(gains[(index + j) % PlayerNum]);
-	}
-	scMsg += "\"";
+	std::stringbuf buf;
+	std::ostream output(&buf);
 
-	return scMsg;
+	output << "sc=\"" << tens[index] << "," << gains[index];
+	for (int j = 1; j < PlayerNum; j ++) {
+		output << "," << tens[(index + j) %  PlayerNum] + "," << gains[(index + j) % PlayerNum];
+	}
+	output << "\"";
+
+//	S scMsg = "sc=\"" + std::to_string(tens[index]) + "," + std::to_string(gains[index]);
+//	for (int j = 1; j < PlayerNum; j ++) {
+//		scMsg = scMsg + "," + std::to_string(tens[(index + j) %  PlayerNum]) + "," + std::to_string(gains[(index + j) % PlayerNum]);
+//	}
+//	scMsg += "\"";
+
+	return buf.str();
 }
 
 std::vector<std::string> TilePatternUtils::GenOrphanMsg(int who, const std::vector<int>& tens, const std::vector<int>& tiles) {
+	static const S headMsg = "<AGARI ba=\"0, 0\"";
+	static const S tailMsg = "/>";
+	static const S otherMsg = "ten=\"40,8000,1\" yaku=\"\" doraHai=\"0\" doraHaiUra=\"0\"";
+
+	std::stringbuf haiBuf;
+	std::ostream haiOutput(&haiBuf);
+
 	vector<S> rspMsgs;
 	vector<int> gains(PlayerNum, 0);
 	gains[who] = Mangan;
 
-	S headMsg = "<AGARI ba=\"0, 0\"";
-	S tailMsg = "/>";
-	S haiMsg = "hai=\"" + std::to_string(tiles[0]);
+
+//	S haiMsg = "hai=\"" + std::to_string(tiles[0]);
+//	for (int i = 1; i < tiles.size(); i ++) {
+//		haiMsg = haiMsg + "," + std::to_string(tiles[i]);
+//	}
+//	haiMsg = haiMsg + "\"";
+
+	haiOutput << "hai=\"" << std::to_string(tiles[0]);
 	for (int i = 1; i < tiles.size(); i ++) {
-		haiMsg = haiMsg + "," + std::to_string(tiles[i]);
+		haiOutput << "," << tiles[i];
 	}
-	haiMsg = haiMsg + "\"";
-	S otherMsg = "ten=\"40,8000,1\" yaku=\"\" doraHai=\"0\" doraHaiUra=\"0\"";
+	haiOutput << "\"";
+	S haiMsg = haiBuf.str();
 
 	for (int i = 0; i < PlayerNum; i ++) {
 		int whoIndex = GetMsgIndex(who, i);
@@ -89,6 +110,7 @@ std::vector<std::string> TilePatternUtils::GenOrphanMsg(int who, const std::vect
 
 		S scMsg = GenScMsg(i, tens, gains);
 
+		//TODO: Performance of + and stringbuf
 		rspMsgs.push_back(headMsg + " " + haiMsg + " " + otherMsg + " " + whoMsg + " " + scMsg + " " + tailMsg);
 	}
 
@@ -99,7 +121,7 @@ vector<S> TilePatternUtils::Gen9YaoMsg(int index, std::vector<int>& tiles, std::
 	vector<S> rspMsg;
 	vector<int> gains(PlayerNum, 0);
 
-	S headMsg = "<RYUUKYOKU type=\"yao9\" ba=\"0,0\"";
+	static const S headMsg = "<RYUUKYOKU type=\"yao9\" ba=\"0,0\"";
 	for (int i = 0; i < PlayerNum; i ++) {
 		S scMsg = GenScMsg(i, tens, gains);
 		S haiHead = "hai" + std::to_string(GetMsgIndex(index, i));

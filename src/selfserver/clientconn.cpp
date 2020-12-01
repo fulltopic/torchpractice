@@ -17,7 +17,6 @@
 #include <boost/algorithm/string.hpp>
 #include <boost/lockfree/spsc_queue.hpp>
 
-//TODO: TO use lock-less memory queue for async-sending
 
 using S = std::string;
 
@@ -52,6 +51,8 @@ void ClientConn::handleSend(const boost::system::error_code& e, std::size_t len,
 		wrtBufIndice.push(bufIndex);
 	} else {
 		logger->error("Client {}:{} sending failure: {} ", roomIndex, index, e.message());
+		wrtBufIndice.push(bufIndex);
+
 		auto roomPtr = room.lock();
 		if (roomPtr) {
 			roomPtr->processNetErr(index);
@@ -71,12 +72,8 @@ void ClientConn::start() {
 
 }
 
-//TODO: infinite loop
-//void ClientConn::send(std::string& msg) {
-//	this->send(std::move(msg));
-//}
 
-void ClientConn::send(std::string msg) {
+void ClientConn::send(const std::string& msg) {
 //void ClientConn::send(std::string&& msg) {
 	if(msg.length() == 0) {
 		return;
@@ -85,10 +82,11 @@ void ClientConn::send(std::string msg) {
 		return;
 	}
 
-	if (msg.find(StateReturnType::SplitToken) != S::npos) {
-		boost::erase_all(msg, StateReturnType::SplitToken);
-	}
-	msg.resize(msg.length() + 1);
+//	if (msg.find(StateReturnType::SplitToken) != S::npos) {
+//		logger->error("Msg with splittoken {}", msg);
+//		boost::erase_all(msg, StateReturnType::SplitToken);
+//	}
+//	msg.resize(msg.length() + 1);
 	logger->info("Client {}:{} to send message {}", roomIndex, index, msg);
 
 	int bufIndex;
@@ -97,9 +95,11 @@ void ClientConn::send(std::string msg) {
 		logger->error("Client{}:{} Not enough buffer to be written", roomIndex, index);
 	}
 	std::copy(msg.begin(), msg.end(), wrtBufs[bufIndex]);
+	wrtBufs[bufIndex][bufSize] = '\0';
+	bufSize ++;
 //	logger->info("Client{}:{} get buffer {}:{}", room->seq, index, bufIndex, msg.length());
 
-    boost::asio::async_write(skt, boost::asio::buffer(wrtBufs[bufIndex], msg.length()),
+    boost::asio::async_write(skt, boost::asio::buffer(wrtBufs[bufIndex], bufSize),
         boost::bind(&ClientConn::handleSend, this->shared_from_this(),
           boost::asio::placeholders::error,
           boost::asio::placeholders::bytes_transferred,
@@ -122,10 +122,6 @@ void ClientConn::handleRcv(const boost::system::error_code& e, std::size_t len) 
 	if ((!e) || (e == boost::asio::error::message_size)) {
 		S msg (rcvBuf.data(), len);
 
-//		if (msg.find("HELO") != S::npos) {
-//			logger->warn("Client {} --> {} received helo {}", (void*)this, index, msg);
-//		}
-
 		roomPtr->processMsg(index, msg);
 
 		if (roomPtr->isWorking()) {
@@ -146,7 +142,6 @@ void ClientConn::handleRcv(const boost::system::error_code& e, std::size_t len) 
 
 
 void ClientConn::close() {
-	//TODO: Should put socket close here? or destructor? Or socket object would be closed automatically?
 	try {
 		skt.cancel();
 		testTimer.cancel();
